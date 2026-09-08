@@ -1,0 +1,341 @@
+"""
+botutils.cache_rewrite
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A module for querying and caching data from MongoDB in a simple to use dictionary-like object
+
+:copyright: (C) 2021-present Luckolite, All Rights Reserved
+:license: Proprietary, see LICENSE for details
+"""
+
+import asyncio
+from copy import deepcopy
+from time import time
+from typing import Any, AsyncGenerator, Dict, Generator, Optional, Union
+
+from motor.motor_asyncio import AsyncIOMotorCollection
+
+Key = Union[int, str]
+CACHE_TTL = 10
+CLEANUP_INTERVAL = 10
+
+
+def _document_copy(value):
+    """Copy cache data without retaining NestedDict parent references."""
+    if isinstance(value, dict):
+        return {key: _document_copy(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_document_copy(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_document_copy(item) for item in value)
+    return deepcopy(value)
+
+
+class Cache:
+    """ Object for querying and caching data from MongoDB """
+    def __init__(self, bot, collection: str, default: dict = None):
+        self.bot = bot
+        self.collection = collection
+        self.default = default
+        self.queries = 0
+        self.cache_queries = 0
+        self.instances: Dict[Any, "DataContext"] = {}
+        self.changes = {}
+        self._loads: Dict[Key, asyncio.Task] = {}
+        self._write_lock = asyncio.Lock()
+        self._flush_task: Optional[asyncio.Task] = None
+        self._next_cleanup = 0.0
+
+    @property
+    def _db(self) -> AsyncIOMotorCollection:
+        """ Shortcut property to get a collection/db instance """
+        return self.bot.aio_mongo[self.collection]
+
+    def _has_new(self, key: Key, now: float = None):
+        instance = self.instances.get(key)
+        if instance is None:
+            return False
+        return (now or time()) - CACHE_TTL <= instance.last_update
+
+    def _cleanup_instances(self, now: float):
+        """Discard stale contexts without scanning the cache on every read."""
+        if now < self._next_cleanup:
+            return
+        self._next_cleanup = now + CLEANUP_INTERVAL
+        for key, instance in list(self.instances.items()):
+            if now - CACHE_TTL > instance.last_update:
+                self.instances.pop(key, None)
+
+    async def _get_shared(self, key: Key) -> dict:
+        """Coalesce simultaneous reads for the same document."""
+        task = self._loads.get(key)
+        if task is None:
+            task = asyncio.create_task(self._get(key))
+            self._loads[key] = task
+            task.add_done_callback(
+                lambda completed: self._loads.pop(key, None)
+                if self._loads.get(key) is completed else None
+            )
+        try:
+            return await asyncio.shield(task)
+        finally:
+            if task.done() and self._loads.get(key) is task:
+                self._loads.pop(key, None)
+
+    def _schedule_flush(self):
+        if self._flush_task is None or self._flush_task.done():
+            self._flush_task = self.bot.loop.create_task(self.flush())
+
+    async def count(self) -> int:
+        """ Returns the dbs document count """
+        return await self._db.estimated_document_count()
+
+    async def contains(self, key: Key) -> bool:
+        """
+        Checks if the collection contains a key.
+        This should only be used when you don't need the dbs contents returned
+        """
+        if key in self.instances and len(self.instances[key]):
+            return True
+        if await self._get_shared(key):
+            return True
+        return False
+
+    def __getitem__(self, key: Key) -> "Get":
+        return Get(self, key)
+
+    def __setitem__(self, key: Key, value):
+        if key in self.instances:
+            self.instances[key].__init__(self, key, value)
+        self.changes[key] = _document_copy(value)
+        self._schedule_flush()
+
+    def __delitem__(self, key: Key):
+        self.bot.loop.create_task(self.remove(key))
+
+    async def keys(self) -> AsyncGenerator:
+        async for document in self._db.find({}):
+            yield document["_id"]
+
+    async def values(self) -> AsyncGenerator:
+        async for document in self._db.find({}):
+            document.pop("_id")
+            yield document
+
+    async def items(self) -> AsyncGenerator:
+        async for document in self._db.find({}):
+            _id = document.pop("_id")
+            yield _id, document
+
+    async def _get(self, key: Key) -> dict:
+        """ Gets the raw results from the db """
+        self.queries += 1
+        result = await self._db.find_one({"_id": key})
+        if result:
+            result.pop("_id")
+            return result
+        return {}
+
+    async def get(self, key: Key) -> "DataContext":
+        """ Gets the results from the db or cache """
+
+        now = time()
+        self._cleanup_instances(now)
+
+        # Check if somethings already accessing the document
+        if self._has_new(key, now):
+            self.cache_queries += 1
+            return self.instances[key]
+
+        result = await self._get_shared(key)
+
+        # Double check after handing off the loop
+        # Check if somethings already accessing the document
+        if self._has_new(key):
+            self.cache_queries += 1
+            return self.instances[key]
+
+        if self.default and not result:
+            result.update(**dict(self.default))
+
+        self.instances[key] = DataContext(self, key, result)
+        return self.instances[key]
+
+    async def fetch(self, key: Key) -> "DataContext":
+        """ Skips the cache and queries the DB """
+        result = await self._get(key)
+        if key in self.instances:
+            del self.instances[key]
+        self.instances[key] = DataContext(self, key, result)
+        return self.instances[key]
+
+    async def flush(self):
+        """ Pushes changes from cache into the actual database """
+        collection = self.bot.aio_mongo[self.collection]
+        async with self._write_lock:
+            while self.changes:
+                for key, value in list(self.changes.items()):
+                    replacement = _document_copy(value)
+                    replacement["_id"] = key
+                    await collection.replace_one(
+                        filter={"_id": key},
+                        replacement=replacement,
+                        upsert=True
+                    )
+                    # A newer value may have arrived while MongoDB yielded.
+                    if self.changes.get(key) == value:
+                        self.changes.pop(key, None)
+
+    async def remove(self, key):
+        """ An awaitable to remove an item from the cache, and database """
+        async with self._write_lock:
+            self.changes.pop(key, None)
+            instance = self.instances.pop(key, None)
+            if instance is not None:
+                instance.clear()
+            await self._db.delete_many({"_id": key})
+
+
+class Get:
+    context: "DataContext"
+
+    def __init__(self, cache: Cache, key: Key):
+        self.cache = cache
+        self.key = key
+
+    def __await__(self) -> Generator[None, None, "DataContext"]:
+        return self._await().__await__()
+
+    async def _await(self) -> "DataContext":
+        return await self.cache.get(self.key)
+
+    async def __aenter__(self) -> "DataContext":
+        self.context = await self.cache.get(self.key)
+        return self.context
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.context.save(manual=True)
+        if self.key in self.cache.instances:
+            del self.cache.instances[self.key]
+
+    async def set(self, key: Key, value: Any):
+        """ Sets a value without need to fetch the config """
+        config = await self.cache.get(self.key)
+        config[key] = value
+        await config.save()
+
+
+class DataContext(dict):
+    """ Represents a temporary dataclass-like object """
+    def __init__(self, state: Cache, key, data):
+        super().__init__()
+        self._state = state
+        self.key = key
+
+        for _key, value in data.items():
+            if value.__class__.__name__ == "dict":
+                value = self.make_subclass(deepcopy(value))
+            self[_key] = value
+        self.copy = _document_copy(data)
+
+        self.last_update = time()
+
+    def __setitem__(self, key, value):
+        """ Make sure nested dictionaries inherit from NestedData """
+        if value.__class__.__name__ == "dict":
+            value = self.make_subclass(deepcopy(value))
+        self.last_update = time()
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key):
+        self.last_update = time()
+        super().__delitem__(key)
+
+    def make_subclass(self, dictionary: dict) -> "NestedDict":
+        """ Make sure nested dictionaries inherit from NestedData """
+        for key, value in list(dictionary.items()):
+            if value.__class__.__name__ == "dict":
+                dictionary[key] = self.make_subclass(value)
+        return NestedDict(self, dictionary)
+
+    async def sync(self):
+        """ Merge with changes to the DB variant """
+        new_data = await self._state._get(self.key)  # type: ignore
+        for key, value in new_data.items():
+            if key not in self.copy or value != self.copy[key]:
+                if value.__class__.__name__ == "dict":
+                    value = self.make_subclass(value)
+                self[key] = value
+        self.copy = new_data
+        self.last_update = time()
+
+    async def save(self, manual: bool = True):
+        if self == self._state.default:
+            return await self._state.remove(self.key)
+        if self.copy and not self.keys():
+            self.copy = {}
+            return await self._state.remove(self.key)
+        if manual or dict(self) != self.copy:
+            self._state.changes[self.key] = _document_copy(self)
+        else:
+            # Check nested values
+            for key, value in self.items():
+                if value != self.copy[key]:
+                    self._state.changes[self.key] = _document_copy(self)
+                    break
+            else:
+                return
+
+        await self._state.flush()
+        self.copy = await self._state._get(self.key)
+
+    async def delete(self):
+        """ Delete the whole config """
+        await self._state.remove(self.key)
+        self.clear()
+
+
+class NestedDict(dict):
+    """ Updates the parent dictionaries last_update variable """
+    def __init__(self, parent: "DataContext", data: dict):
+        self._parent = parent
+        super().__init__(data)
+
+    def _touch(self):
+        self._parent.last_update = time()
+
+    def __setitem__(self, key, value):
+        # Subclass any new dictionaries
+        if value.__class__.__name__ == "dict":
+            value = self._parent.make_subclass(value)
+
+        self._touch()
+
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key):
+        self._touch()
+        super().__delitem__(key)
+
+    def clear(self):
+        if self:
+            self._touch()
+        super().clear()
+
+    def pop(self, key, *default):
+        if key in self:
+            self._touch()
+        return super().pop(key, *default)
+
+    def popitem(self):
+        self._touch()
+        return super().popitem()
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self[key] = default
+        return self[key]
+
+    def update(self, *args, **kwargs):
+        for key, value in dict(*args, **kwargs).items():
+            self[key] = value

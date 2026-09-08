@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="metrics_graph_widget_name">Control Panel Metrics</string>
+    <string name="metrics_graph_widget_description">A configurable graph for Fate servers, users, commands, database calls, or sent messages.</string>
+    <string name="metrics_graph_widget_kicker">CONTROL PANEL</string>
+    <string name="metrics_graph_widget_default_metric">Commands used</string>
+    <string name="metrics_graph_widget_default_window">1H</string>
+    <string name="metrics_graph_widget_placeholder">—</string>
+    <string name="metrics_graph_widget_waiting">Waiting for samples</string>
+    <string name="metrics_graph_widget_no_data">No metric data yet</string>
+    <string name="metrics_graph_widget_tap_refresh">Tap refresh to load</string>
+    <string name="metrics_graph_widget_edit">EDIT</string>
+    <string name="metrics_graph_widget_refresh_symbol">↻</string>
+    <string name="metrics_graph_widget_chart_description">Fate metric chart</string>
+</resources>

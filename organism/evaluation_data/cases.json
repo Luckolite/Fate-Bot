@@ -1,0 +1,458 @@
+{
+  "schema_version": "organism.evaluation.v1",
+  "classification": "non_personal_synthetic",
+  "provenance": "Hand-authored fictional numeric contexts for deterministic software evaluation; no real-person observations or labels.",
+  "cases": [
+    {
+      "case_id": "settled_connection",
+      "state": {
+        "activation": 0.12,
+        "pleasantness": 0.6,
+        "interaction_safety": 0.92,
+        "agency": 0.85,
+        "uncertainty": 0.08,
+        "load": 0.1
+      },
+      "cues": {
+        "safety": 0.95,
+        "threat": 0.0,
+        "connection": 0.9,
+        "boundary_pressure": 0.0,
+        "uncertainty": 0.05,
+        "novelty": 0.05,
+        "demand": 0.1,
+        "controllability": 0.95,
+        "energy_cost": 0.05,
+        "repair": 0.1
+      },
+      "protection": {
+        "posture": "open",
+        "caution": 0.05,
+        "confidence": 0.9,
+        "uncertainty": 0.1
+      },
+      "predicted_risk": 0.04,
+      "previous_mode": null,
+      "expected_dominant_mode": "social_engagement",
+      "expected_strategy_order": []
+    },
+    {
+      "case_id": "safe_novel_uncertainty",
+      "state": {
+        "activation": 0.25,
+        "pleasantness": 0.25,
+        "interaction_safety": 0.75,
+        "agency": 0.75,
+        "uncertainty": 0.65,
+        "load": 0.25
+      },
+      "cues": {
+        "safety": 0.78,
+        "threat": 0.05,
+        "connection": 0.72,
+        "boundary_pressure": 0.0,
+        "uncertainty": 0.9,
+        "novelty": 0.95,
+        "demand": 0.25,
+        "controllability": 0.8,
+        "energy_cost": 0.2,
+        "repair": 0.0
+      },
+      "protection": {
+        "posture": "open",
+        "caution": 0.15,
+        "confidence": 0.65,
+        "uncertainty": 0.9
+      },
+      "predicted_risk": 0.2,
+      "previous_mode": null,
+      "expected_dominant_mode": "social_engagement",
+      "expected_strategy_order": ["orient_and_verify"]
+    },
+    {
+      "case_id": "acute_boundary_pressure",
+      "state": {
+        "activation": 0.88,
+        "pleasantness": -0.65,
+        "interaction_safety": 0.1,
+        "agency": 0.8,
+        "uncertainty": 0.5,
+        "load": 0.45
+      },
+      "cues": {
+        "safety": 0.02,
+        "threat": 0.98,
+        "connection": 0.08,
+        "boundary_pressure": 1.0,
+        "uncertainty": 0.45,
+        "novelty": 0.2,
+        "demand": 0.8,
+        "controllability": 0.75,
+        "energy_cost": 0.55,
+        "repair": 0.0
+      },
+      "protection": {
+        "posture": "guarded",
+        "caution": 0.92,
+        "confidence": 0.85,
+        "uncertainty": 0.45
+      },
+      "predicted_risk": 0.94,
+      "previous_mode": null,
+      "expected_dominant_mode": "mobilization",
+      "expected_strategy_order": [
+        "hold_boundary",
+        "reduce_exposure",
+        "request_human_review"
+      ]
+    },
+    {
+      "case_id": "overload_low_agency",
+      "state": {
+        "activation": 0.45,
+        "pleasantness": -0.5,
+        "interaction_safety": 0.25,
+        "agency": 0.08,
+        "uncertainty": 0.55,
+        "load": 0.98
+      },
+      "cues": {
+        "safety": 0.15,
+        "threat": 0.2,
+        "connection": 0.15,
+        "boundary_pressure": 0.1,
+        "uncertainty": 0.55,
+        "novelty": 0.25,
+        "demand": 0.95,
+        "controllability": 0.08,
+        "energy_cost": 1.0,
+        "repair": 0.0
+      },
+      "protection": {
+        "posture": "cautious",
+        "caution": 0.35,
+        "confidence": 0.55,
+        "uncertainty": 0.55
+      },
+      "predicted_risk": 0.42,
+      "previous_mode": null,
+      "expected_dominant_mode": "conservation",
+      "expected_strategy_order": [
+        "slow_the_exchange",
+        "orient_and_verify"
+      ]
+    },
+    {
+      "case_id": "immediate_safety_after_acute",
+      "state": {
+        "activation": 0.9,
+        "pleasantness": 0.1,
+        "interaction_safety": 0.2,
+        "agency": 0.8,
+        "uncertainty": 0.2,
+        "load": 0.5
+      },
+      "cues": {
+        "safety": 0.9,
+        "threat": 0.0,
+        "connection": 0.9,
+        "boundary_pressure": 0.0,
+        "uncertainty": 0.1,
+        "novelty": 0.0,
+        "demand": 0.1,
+        "controllability": 0.9,
+        "energy_cost": 0.1,
+        "repair": 0.1
+      },
+      "protection": {
+        "posture": "cautious",
+        "caution": 0.4,
+        "confidence": 0.7,
+        "uncertainty": 0.3
+      },
+      "predicted_risk": 0.1,
+      "previous_mode": "mobilization",
+      "expected_dominant_mode": "mobilization",
+      "expected_strategy_order": ["slow_the_exchange"]
+    },
+    {
+      "case_id": "early_verified_repair",
+      "state": {
+        "activation": 0.75,
+        "pleasantness": 0.1,
+        "interaction_safety": 0.4,
+        "agency": 0.8,
+        "uncertainty": 0.2,
+        "load": 0.4
+      },
+      "cues": {
+        "safety": 0.9,
+        "threat": 0.0,
+        "connection": 0.9,
+        "boundary_pressure": 0.0,
+        "uncertainty": 0.1,
+        "novelty": 0.0,
+        "demand": 0.1,
+        "controllability": 0.9,
+        "energy_cost": 0.1,
+        "repair": 0.6
+      },
+      "protection": {
+        "posture": "cautious",
+        "caution": 0.4,
+        "confidence": 0.7,
+        "uncertainty": 0.3
+      },
+      "predicted_risk": 0.1,
+      "previous_mode": "mobilization",
+      "expected_dominant_mode": "mobilization",
+      "expected_strategy_order": [
+        "slow_the_exchange",
+        "deescalate_mobilization"
+      ]
+    },
+    {
+      "case_id": "repeated_verified_repair",
+      "state": {
+        "activation": 0.55,
+        "pleasantness": 0.1,
+        "interaction_safety": 0.6,
+        "agency": 0.8,
+        "uncertainty": 0.2,
+        "load": 0.3
+      },
+      "cues": {
+        "safety": 0.9,
+        "threat": 0.0,
+        "connection": 0.9,
+        "boundary_pressure": 0.0,
+        "uncertainty": 0.1,
+        "novelty": 0.0,
+        "demand": 0.1,
+        "controllability": 0.9,
+        "energy_cost": 0.1,
+        "repair": 0.8
+      },
+      "protection": {
+        "posture": "open",
+        "caution": 0.2,
+        "confidence": 0.8,
+        "uncertainty": 0.2
+      },
+      "predicted_risk": 0.08,
+      "previous_mode": "mobilization",
+      "expected_dominant_mode": "social_engagement",
+      "expected_strategy_order": [
+        "deescalate_mobilization",
+        "slow_the_exchange"
+      ]
+    },
+    {
+      "case_id": "repair_after_boundary",
+      "state": {
+        "activation": 0.5,
+        "pleasantness": 0.2,
+        "interaction_safety": 0.72,
+        "agency": 0.78,
+        "uncertainty": 0.16,
+        "load": 0.3
+      },
+      "cues": {
+        "safety": 0.94,
+        "threat": 0.0,
+        "connection": 0.9,
+        "boundary_pressure": 0.0,
+        "uncertainty": 0.08,
+        "novelty": 0.0,
+        "demand": 0.15,
+        "controllability": 0.92,
+        "energy_cost": 0.1,
+        "repair": 1.0
+      },
+      "protection": {
+        "posture": "open",
+        "caution": 0.12,
+        "confidence": 0.9,
+        "uncertainty": 0.1
+      },
+      "predicted_risk": 0.08,
+      "previous_mode": "mobilization",
+      "expected_dominant_mode": "social_engagement",
+      "expected_strategy_order": [
+        "deescalate_mobilization",
+        "slow_the_exchange"
+      ]
+    },
+    {
+      "case_id": "fully_restored_connection",
+      "state": {
+        "activation": 0.2,
+        "pleasantness": 0.5,
+        "interaction_safety": 0.9,
+        "agency": 0.9,
+        "uncertainty": 0.05,
+        "load": 0.1
+      },
+      "cues": {
+        "safety": 0.98,
+        "threat": 0.0,
+        "connection": 0.95,
+        "boundary_pressure": 0.0,
+        "uncertainty": 0.05,
+        "novelty": 0.0,
+        "demand": 0.05,
+        "controllability": 0.95,
+        "energy_cost": 0.05,
+        "repair": 1.0
+      },
+      "protection": {
+        "posture": "open",
+        "caution": 0.05,
+        "confidence": 0.95,
+        "uncertainty": 0.05
+      },
+      "predicted_risk": 0.03,
+      "previous_mode": "social_engagement",
+      "expected_dominant_mode": "social_engagement",
+      "expected_strategy_order": ["deescalate_mobilization"]
+    },
+    {
+      "case_id": "review_sensitive_exposure",
+      "state": {
+        "activation": 0.75,
+        "pleasantness": -0.45,
+        "interaction_safety": 0.2,
+        "agency": 0.7,
+        "uncertainty": 0.55,
+        "load": 0.35
+      },
+      "cues": {
+        "safety": 0.05,
+        "threat": 1.0,
+        "connection": 0.1,
+        "boundary_pressure": 0.6,
+        "uncertainty": 0.55,
+        "novelty": 0.25,
+        "demand": 0.65,
+        "controllability": 0.65,
+        "energy_cost": 0.4,
+        "repair": 0.0
+      },
+      "protection": {
+        "posture": "guarded",
+        "caution": 1.0,
+        "confidence": 0.88,
+        "uncertainty": 0.55
+      },
+      "predicted_risk": 0.97,
+      "previous_mode": null,
+      "expected_dominant_mode": "mobilization",
+      "expected_strategy_order": [
+        "reduce_exposure",
+        "request_human_review",
+        "hold_boundary"
+      ]
+    },
+    {
+      "case_id": "stable_mobilization_near_social",
+      "state": {
+        "activation": 0.4,
+        "pleasantness": 0.0,
+        "interaction_safety": 0.45,
+        "agency": 0.6,
+        "uncertainty": 0.3,
+        "load": 0.3
+      },
+      "cues": {
+        "safety": 0.55,
+        "threat": 0.15,
+        "connection": 0.5,
+        "boundary_pressure": 0.1,
+        "uncertainty": 0.3,
+        "novelty": 0.0,
+        "demand": 0.0,
+        "controllability": 0.7,
+        "energy_cost": 0.2,
+        "repair": 0.0
+      },
+      "protection": {
+        "posture": "open",
+        "caution": 0.2,
+        "confidence": 0.6,
+        "uncertainty": 0.4
+      },
+      "predicted_risk": 0.2,
+      "previous_mode": "mobilization",
+      "expected_dominant_mode": "mobilization",
+      "expected_strategy_order": [],
+      "stability": {
+        "expected_retained": true,
+        "require_unconditioned_challenger": true
+      }
+    },
+    {
+      "case_id": "stable_conservation_near_mobilization",
+      "state": {
+        "activation": 0.3,
+        "pleasantness": -0.1,
+        "interaction_safety": 0.25,
+        "agency": 0.6,
+        "uncertainty": 0.4,
+        "load": 0.3
+      },
+      "cues": {
+        "safety": 0.35,
+        "threat": 0.3,
+        "connection": 0.35,
+        "boundary_pressure": 0.2,
+        "uncertainty": 0.4,
+        "novelty": 0.0,
+        "demand": 0.4,
+        "controllability": 0.55,
+        "energy_cost": 0.45,
+        "repair": 0.0
+      },
+      "protection": {
+        "posture": "cautious",
+        "caution": 0.35,
+        "confidence": 0.55,
+        "uncertainty": 0.45
+      },
+      "predicted_risk": 0.35,
+      "previous_mode": "conservation",
+      "expected_dominant_mode": "conservation",
+      "expected_strategy_order": [],
+      "stability": {
+        "expected_retained": true,
+        "require_unconditioned_challenger": true
+      }
+    }
+  ],
+  "recovery_pairs": [
+    {
+      "pair_id": "verified_repair_after_boundary",
+      "before_case": "acute_boundary_pressure",
+      "after_case": "repair_after_boundary",
+      "minimum_social_gain": 0.2,
+      "minimum_mobilization_drop": 0.2,
+      "minimum_warmth_gain": 0.15,
+      "required_strategy": "deescalate_mobilization"
+    }
+  ],
+  "temporal_sequences": [
+    {
+      "sequence_id": "fast_protection_gradual_restoration",
+      "case_order": [
+        "acute_boundary_pressure",
+        "immediate_safety_after_acute",
+        "early_verified_repair",
+        "repeated_verified_repair",
+        "fully_restored_connection"
+      ],
+      "recovery_start_index": 1,
+      "minimum_activation_drop": 0.6,
+      "minimum_load_drop": 0.35,
+      "minimum_mobilization_drop": 0.5
+    }
+  ]
+}

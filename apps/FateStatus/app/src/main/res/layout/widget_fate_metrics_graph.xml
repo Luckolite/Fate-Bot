@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/metrics_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:baselineAligned="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/metrics_widget_kicker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/metrics_graph_widget_kicker"
+                android:textColor="@color/fate_gold"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/metrics_widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:text="@string/metrics_graph_widget_default_metric"
+                android:textColor="@color/fate_text"
+                android:textSize="17sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/metrics_widget_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/metrics_graph_widget_placeholder"
+                android:textColor="@color/fate_ember"
+                android:textSize="23sp" />
+
+            <TextView
+                android:id="@+id/metrics_widget_change"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/metrics_graph_widget_waiting"
+                android:textColor="@color/fate_muted"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/metrics_widget_graph"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="7dp"
+        android:layout_weight="1"
+        android:background="@drawable/stat_panel"
+        android:contentDescription="@string/metrics_graph_widget_chart_description"
+        android:scaleType="fitXY" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/metrics_widget_total"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/metrics_graph_widget_no_data"
+                android:textColor="@color/fate_muted"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/metrics_widget_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/metrics_graph_widget_tap_refresh"
+                android:textColor="@color/fate_muted"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/metrics_widget_window"
+            android:layout_width="40dp"
+            android:layout_height="34dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:text="@string/metrics_graph_widget_default_window"
+            android:textColor="@color/fate_gold"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/metrics_widget_edit"
+            android:layout_width="44dp"
+            android:layout_height="34dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:text="@string/metrics_graph_widget_edit"
+            android:textColor="@color/fate_text"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/metrics_widget_refresh"
+            android:layout_width="38dp"
+            android:layout_height="34dp"
+            android:gravity="center"
+            android:text="@string/metrics_graph_widget_refresh_symbol"
+            android:textColor="@color/fate_text"
+            android:textSize="20sp" />
+    </LinearLayout>
+</LinearLayout>

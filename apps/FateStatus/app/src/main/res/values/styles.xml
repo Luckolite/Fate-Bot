@@ -1,0 +1,83 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">#2B1B21</item>
+        <item name="android:statusBarColor">#2B1B21</item>
+        <item name="android:windowBackground">@drawable/activity_background</item>
+        <item name="android:colorAccent">@color/fate_gold</item>
+    </style>
+
+    <style name="WidgetMetricPanel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/stat_panel</item>
+        <item name="android:gravity">center</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="WidgetMetricValue">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:text">—</item>
+        <item name="android:textColor">@color/fate_text</item>
+        <item name="android:textSize">21sp</item>
+    </style>
+
+    <style name="WidgetMetricValueCompact" parent="WidgetMetricValue">
+        <item name="android:textSize">19sp</item>
+    </style>
+
+    <style name="WidgetMetricLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/fate_muted</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="MemoryWidgetRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="MemoryWidgetTextRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <style name="MemoryWidgetLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/fate_text</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
+    <style name="MemoryWidgetValue">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/fate_muted</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
+    <style name="MemoryWidgetBar" parent="@android:style/Widget.ProgressBar.Horizontal">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">4dp</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:progressTint">@color/fate_ember</item>
+        <item name="android:progressBackgroundTint">#4A3239</item>
+    </style>
+</resources>

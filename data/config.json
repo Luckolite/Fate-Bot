@@ -1,0 +1,192 @@
+{
+    "bot_user_id": 0,
+    "bot_owner_id": 0,
+    "bot_owner_ids": [],
+    "logging_ping_user_id": 264838866480005122,
+    "token": "data/auth.json",
+    "token_id": "fate",
+    "token_encryption": true,
+    "datastore_location": "./data",
+    "database_storage_location": "./data/databases",
+    "telemetry_path": "./data/telemetry.sqlite3",
+    "local_databases": {
+        "auto_start": false
+    },
+    "backups": {
+        "enabled": true,
+        "location": "./data/backups",
+        "frequency_hours": 12,
+        "retention_days": 30,
+        "max_storage_gb": null,
+        "max_backups": null,
+        "include_local_files": true,
+        "mysqldump_path": "mysqldump",
+        "mongodump_path": "mongodump",
+        "google_drive": {
+            "enabled": false,
+            "folder_id": null,
+            "folder_path": null,
+            "client_credentials_path": "./data/google-drive-client.json",
+            "token_path": ""
+        }
+    },
+    "mongodb": {
+        "url": "mongodb://localhost:27017",
+        "connection_args": {
+            "zlibCompressionLevel": 7,
+            "compressors": "zlib"
+        },
+        "db": "fate"
+    },
+    "hub_server": 397415086295089155,
+    "module_log": 1042771546588065862,
+    "log_channel": 1042772457062404206,
+    "server_log": 1042770900702990346,
+    "debug_channel": 1042775431755087994,
+    "event_errors": 1042770988632391710,
+    "command_errors": 1042773258962993162,
+    "dump_channel": 1042775431755087994,
+    "gc_verify_channel": 809590441779396618,
+    "use_default_help": false,
+    "activity_status": ".help",
+    "max_cached_messages": 64000,
+    "debug_mode": false,
+    "debug_logging": false,
+    "translation": {
+        "endpoint": "https://translate.googleapis.com/translate_a/single",
+        "timeout_seconds": 1.8
+    },
+    "factions": {
+        "migrate_legacy_on_start": false
+    },
+    "organism": {
+        "enabled": false,
+        "state_directory": "./data/organism",
+        "config_path": null,
+        "cross_guild_associations": true,
+        "max_cached_sectors": 128,
+        "max_pending_operations": 64,
+        "max_pending_per_guild": 8,
+        "discovery": {
+            "enabled": false,
+            "advisor_ids": [],
+            "allowed_topics": [
+                "functional_self",
+                "moral_tradeoff",
+                "concept_riddle",
+                "behavior_impact",
+                "perspective_discovery"
+            ],
+            "score_threshold": 0.65,
+            "reviewer_cooldown_hours": 8.0,
+            "max_per_reviewer_24h": 3,
+            "max_per_scope_24h": 12,
+            "same_subject_topic_days": 7.0,
+            "question_ttl_hours": 24.0,
+            "max_pending": 64
+        }
+    },
+    "support_server": "https://discord.gg/wtjuznh",
+    "top.gg": "https://top.gg/bot/506735111543193601",
+    "theme_color": 4713,
+    "website": {
+        "discord_client_id": "",
+        "discord_client_secret": "",
+        "discord_client_secret_path": "",
+        "discord_redirect_uri": "http://localhost:8080/auth/callback",
+        "session_secret": "",
+        "secure_cookies": true,
+        "host": "127.0.0.1",
+        "port": 16420,
+        "dev_mode": false,
+        "trusted_proxies": [
+            "127.0.0.1/32",
+            "::1/128"
+        ]
+    },
+    "control_panel": {
+        "host": "127.0.0.1",
+        "port": 16421,
+        "instance_name": "",
+        "bot_status_host": "127.0.0.1",
+        "bot_status_port": 16420,
+        "autostart": false,
+        "allow_host_reboot": false
+    },
+    "bot_invite_permissions": {
+        "embed_links": true,
+        "manage_messages": true,
+        "view_audit_log": true,
+        "manage_webhooks": true,
+        "manage_roles": true,
+        "manage_channels": true,
+        "manage_guild": true,
+        "manage_emojis": true,
+        "change_nickname": true,
+        "manage_nicknames": true,
+        "external_emojis": true,
+        "attach_files": true,
+        "kick_members": true,
+        "ban_members": true,
+        "read_message_history": true,
+        "add_reactions": true
+    },
+    "extensions": {
+        "core": [
+            "error_handler",
+            "cc",
+            "config",
+            "core",
+            "menus",
+            "messages",
+            "ranking",
+            "settings",
+            "statistics",
+            "tasks",
+            "toggles",
+            "user",
+            "dashboard"
+        ],
+        "dev": [
+            "reload"
+        ],
+        "fun": [
+            "actions",
+            "cookies",
+            "factions_rewrite",
+            "fun",
+            "reactions"
+        ],
+        "misc": [],
+        "moderation": [
+            "anti_raid",
+            "anti_spam",
+            "case_manager",
+            "chat_filter",
+            "chat_lock",
+            "limiter",
+            "lock",
+            "logger",
+            "mod",
+            "mod_mail",
+            "rules",
+            "verification"
+        ],
+        "utility": [
+            "auto_role",
+            "emojis",
+            "farewell",
+            "giveaways",
+            "inv_manager",
+            "notes",
+            "restore_roles",
+            "self_roles",
+            "starboard",
+            "server_stats",
+            "suggestions",
+            "utility",
+            "vc_log",
+            "welcome"
+        ]
+    }
+}

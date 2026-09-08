@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en" data-theme="classic" data-effects="on">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17200c">
+  <title>Fate Control</title>
+  <link rel="icon" href="/control/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/control/assets/styles.css?v=20260902-17">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">FATE CONTROL</p>
+        <h1 id="instance-title">Mission control</h1>
+      </div>
+      <div class="topbar-actions">
+        <span class="connection-pill" id="connection-pill" data-state="loading">Connecting</span>
+        <button class="button quiet" id="theme-button" type="button">Theme</button>
+        <button class="button quiet" id="refresh-button" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <nav class="section-nav" aria-label="Control panel">
+      <button type="button" data-section="overview" aria-current="page">Overview</button>
+      <button type="button" data-section="metrics">Metrics</button>
+      <button type="button" data-section="config">Config</button>
+      <button type="button" data-section="backups">Backups</button>
+      <button type="button" data-section="console">Console</button>
+      <button type="button" id="settings-nav" data-section="settings">Settings</button>
+    </nav>
+
+    <main>
+      <section class="panel-section active" id="section-overview" aria-labelledby="overview-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">LIVE</p><h2 id="overview-title">System overview</h2></div>
+          <p id="overview-updated" class="muted">Waiting for FateControl…</p>
+        </div>
+        <div class="status-grid" id="status-grid"></div>
+        <article class="card control-card">
+          <div><p class="eyebrow">PROCESS</p><h3>Fate service</h3><p class="muted" id="process-copy">Loading process state…</p></div>
+          <div class="button-row">
+            <button class="button primary" id="start-button" type="button">Start</button>
+            <button class="button" id="stop-button" type="button">Stop</button>
+            <button class="button" id="restart-button" type="button">Restart</button>
+            <button class="button" id="restart-status-server-button" type="button">Restart status server</button>
+            <button class="button danger" id="reboot-button" type="button">Reboot host</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section" id="section-metrics" aria-labelledby="metrics-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">HISTORY</p><h2 id="metrics-title">Metrics</h2></div>
+          <div class="metrics-toolbar">
+            <label class="compact-field">All graphs<select id="metrics-window"></select></label>
+            <label class="compact-field metric-columns-field">Columns<select id="metrics-columns"><option value="auto">Auto</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>
+            <label class="toggle-row compact metrics-hidden-toggle"><input id="metrics-show-hidden" type="checkbox"><span>Show hidden</span></label>
+            <button class="button" id="customize-metrics" type="button">Customize</button>
+          </div>
+        </div>
+        <p class="muted section-copy">Graphs are generated from FateControl’s metric registry, so newly registered metrics appear here automatically.</p>
+        <p class="muted metrics-layout-summary" id="metrics-layout-summary">Loading graph layout…</p>
+        <div class="metric-grid" id="metric-grid"></div>
+      </section>
+
+      <section class="panel-section" id="section-config" aria-labelledby="config-title">
+        <form id="config-form">
+          <div class="config-page-heading">
+            <p class="eyebrow">CONFIGURATION</p>
+            <h2 id="config-title">Shape Fate safely</h2>
+            <p class="muted section-copy">Edit Fate through clear controls grouped by purpose. Protected secrets stay on the bot computer and every save creates a backup. Backup policy has its own Backups tab.</p>
+          </div>
+
+          <article class="card config-control-card">
+            <div class="config-card-header">
+              <h3>Config controls</h3>
+              <button class="button primary compact-action" id="save-config" type="button" disabled>Saved</button>
+            </div>
+            <p class="config-result muted" id="config-result" role="status">Connecting to FateControl…</p>
+            <button class="button full-button" id="reload-config" type="button">Reload settings</button>
+            <div class="config-secondary-actions">
+              <button class="button" id="discard-config" type="button" disabled>Discard edits</button>
+              <button class="button gold-action" id="save-restart-config" type="button" disabled>Save &amp; restart</button>
+            </div>
+          </article>
+
+          <article class="card config-navigator-card">
+            <h3>Find a setting</h3>
+            <p class="muted">Focus on one section or search section names and setting keys. Unsaved values stay in place while filtering.</p>
+            <input id="config-search" type="search" placeholder="Search settings" autocomplete="off">
+            <select id="config-section-filter" aria-label="Configuration section"><option>All settings</option></select>
+            <p class="config-filter-summary muted" id="config-filter-summary">Loading configuration sections…</p>
+          </article>
+
+          <div id="config-editor" class="config-section-stack" aria-live="polite">
+            <article class="card config-section-card"><h3 class="muted">Loading settings…</h3></article>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel-section" id="section-backups" aria-labelledby="backups-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">RESTORABLE ARCHIVES</p><h2 id="backups-title">Backups</h2></div>
+          <span class="connection-pill" id="drive-pill" data-state="loading">Drive status</span>
+        </div>
+        <p class="muted section-copy">Backup policy is rendered from the server response and saved independently from the rest of Fate’s configuration.</p>
+        <form id="backups-form">
+          <div id="backups-editor" class="editor-stack"></div>
+          <div class="button-row sticky-actions">
+            <button class="button primary" type="submit">Save backup policy</button>
+            <button class="button" id="link-drive" type="button">Link Google Drive</button>
+            <button class="button" id="choose-drive-folder" type="button">Choose Drive folder</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel-section" id="section-console" aria-labelledby="console-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">BOUNDED TAIL</p><h2 id="console-title">Console</h2></div>
+          <div class="button-row">
+            <button class="button" id="copy-console" type="button">Copy</button>
+            <label class="toggle-row compact"><input id="console-auto" type="checkbox" checked><span>Auto-refresh</span></label>
+          </div>
+        </div>
+        <pre id="console-output" class="console-output" tabindex="0">Waiting for output…</pre>
+      </section>
+
+      <section class="panel-section" id="section-settings" aria-labelledby="settings-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">APPEARANCE</p><h2 id="settings-title">Settings</h2></div>
+        </div>
+        <p class="muted section-copy">Choose the same visual theme and ambient-effects behavior used by Fate Control on Android.</p>
+        <article class="card settings-theme-card">
+          <div><p class="eyebrow">VISUAL THEME</p><h3>Theme library</h3></div>
+          <div class="theme-options settings-theme-options" id="settings-theme-options" role="radiogroup" aria-label="Visual theme"></div>
+          <label class="toggle-row theme-effects-row settings-effects-row">
+            <input id="settings-theme-effects" type="checkbox" checked>
+            <span><strong>Ambient effects</strong><small>Gently moves themed artwork. Reduced-motion system settings still take priority.</small></span>
+          </label>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="theme-dialog">
+    <div class="dialog-card theme-dialog-card">
+      <div class="section-heading">
+        <div><p class="eyebrow">APPEARANCE</p><h2>Visual theme</h2></div>
+        <button class="button quiet" id="close-theme-dialog" type="button">Close</button>
+      </div>
+      <p class="muted theme-copy">The same eight themes are available in Fate Control for Windows and Android.</p>
+      <div class="theme-options" id="theme-options" role="radiogroup" aria-label="Visual theme"></div>
+      <label class="toggle-row theme-effects-row">
+        <input id="theme-effects" type="checkbox" checked>
+        <span><strong>Ambient effects</strong><small>Gently moves themed artwork. Reduced-motion system settings still take priority.</small></span>
+      </label>
+    </div>
+  </dialog>
+
+  <dialog id="login-dialog">
+    <form method="dialog" id="login-form" class="dialog-card">
+      <p class="eyebrow">PAIR THIS CLIENT</p>
+      <h2>Enter the Fate control key</h2>
+      <p class="muted">The key is exchanged for a private, HTTP-only session. It is not saved in this page.</p>
+      <label>Control key<input id="login-key" type="password" autocomplete="off" required></label>
+      <p class="form-error" id="login-error" role="alert"></p>
+      <button class="button primary" value="default" type="submit">Connect</button>
+    </form>
+  </dialog>
+
+  <dialog id="folder-dialog">
+    <div class="dialog-card folder-dialog-card">
+      <div class="section-heading"><div><p class="eyebrow">GOOGLE DRIVE</p><h2>Choose a folder</h2></div><button class="button quiet" id="close-folder-dialog" type="button">Close</button></div>
+      <p class="muted" id="folder-path">Drive</p>
+      <div class="folder-list" id="folder-list"></div>
+      <div class="button-row"><button class="button primary" id="select-current-folder" type="button">Use this folder</button><button class="button" id="folder-up" type="button">Up</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="metrics-customizer-dialog">
+    <div class="dialog-card metrics-customizer-card">
+      <div class="section-heading">
+        <div><p class="eyebrow">METRIC LAYOUT</p><h2>Customize graphs</h2></div>
+      </div>
+      <p class="muted">Show, edit, and arrange graphs here. Done or tapping outside saves this layout; Cancel discards layout edits.</p>
+      <div class="metrics-customizer-list" id="metrics-customizer-list"></div>
+      <p class="form-error" id="metrics-customizer-error" role="alert"></p>
+      <button class="button full-button" id="reset-metrics-layout" type="button">Reset to default</button>
+      <div class="config-secondary-actions">
+        <button class="button" id="cancel-metrics-layout" type="button">Cancel</button>
+        <button class="button primary" id="save-metrics-layout" type="button">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="metric-editor-dialog">
+    <div class="dialog-card metric-editor-card">
+      <div><p class="eyebrow">GRAPH SETTINGS</p><h2 id="metric-editor-title">Metric graph</h2></div>
+      <label>Timeframe<select id="metric-editor-window"></select></label>
+      <label>Bucket size (seconds)<input id="metric-editor-bucket" type="number" inputmode="numeric" step="1"></label>
+      <p class="muted" id="metric-editor-bucket-hint"></p>
+      <div id="metric-editor-position">
+        <p class="eyebrow">POSITION</p>
+        <div class="config-secondary-actions">
+          <button class="button" id="metric-editor-up" type="button">Move earlier</button>
+          <button class="button" id="metric-editor-down" type="button">Move later</button>
+        </div>
+      </div>
+      <div class="metric-editor-visibility">
+        <div><p class="eyebrow">VISIBILITY</p><p class="muted" id="metric-editor-visibility-copy">Hide this graph from the Metrics page.</p></div>
+        <button class="button danger" id="toggle-metric-hidden" type="button">Hide metric</button>
+      </div>
+      <p class="form-error" id="metric-editor-error" role="alert"></p>
+      <div class="config-secondary-actions">
+        <button class="button" id="cancel-metric-editor" type="button">Cancel</button>
+        <button class="button primary" id="save-metric-editor" type="button">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="command-detail-dialog">
+    <div class="dialog-card command-detail-card">
+      <div><p class="eyebrow">COMMAND HISTORY</p><h2 id="command-detail-title">Command</h2></div>
+      <p class="muted" id="command-detail-summary"></p>
+      <div id="command-detail-chart" class="command-detail-chart"></div>
+      <button class="button full-button" id="close-command-detail" type="button">Close</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/control/assets/app.js?v=20260902-21" defer></script>
+</body>
+</html>

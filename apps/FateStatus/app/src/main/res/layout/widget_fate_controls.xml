@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/control_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/control_widget_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="FATE CONTROLS" android:textColor="@color/fate_text" android:textSize="16sp" />
+            <TextView android:id="@+id/control_widget_host" android:layout_width="wrap_content" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:text="Waiting for FateControl" android:textColor="@color/fate_muted" android:textSize="11sp" />
+        </LinearLayout>
+        <TextView android:id="@+id/control_widget_state" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="SYNCING" android:textColor="@color/fate_gold" android:textSize="11sp" />
+        <TextView android:id="@+id/control_widget_refresh" android:layout_width="38dp" android:layout_height="38dp" android:gravity="center" android:text="↻" android:textColor="@color/fate_text" android:textSize="21sp" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="12dp" android:layout_weight="1" android:orientation="horizontal">
+        <TextView android:id="@+id/control_widget_toggle" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginEnd="5dp" android:layout_weight="1" android:background="@drawable/button_background" android:fontFamily="sans-serif-medium" android:gravity="center" android:text="START FATE" android:textColor="@color/fate_text" android:textSize="13sp" />
+        <TextView android:id="@+id/control_widget_restart" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginStart="5dp" android:layout_weight="1" android:background="@drawable/stat_panel" android:fontFamily="sans-serif-medium" android:gravity="center" android:text="RESTART" android:textColor="@color/fate_gold" android:textSize="13sp" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/control_widget_updated" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:ellipsize="end" android:maxLines="1" android:text="No data yet" android:textColor="@color/fate_muted" android:textSize="10sp" />
+</LinearLayout>

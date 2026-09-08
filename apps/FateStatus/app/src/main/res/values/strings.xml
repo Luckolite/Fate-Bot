@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Control Panel</string>
+    <string name="widget_name">Control Panel Status</string>
+    <string name="widget_description">Discover and manage Fate with live bot health, users, latency, and uptime.</string>
+    <string name="memory_widget_name">Fate Memory Breakdown</string>
+    <string name="memory_widget_description">See Fate bot process memory and its runtime breakdown at a glance.</string>
+    <string name="console_widget_name">Fate Console</string>
+    <string name="console_widget_description">See Fate logging and recent traceback lines from your home screen.</string>
+    <string name="console_widget_header">FATE CONSOLE</string>
+    <string name="console_widget_syncing">SYNCING</string>
+    <string name="console_widget_loading">Fetching Fate\'s latest output…</string>
+    <string name="widget_refresh_symbol">↻</string>
+    <string name="widget_no_data">No data yet</string>
+    <string name="control_widget_name">Fate Service Controls</string>
+    <string name="control_widget_description">Start, stop, restart, and refresh Fate from the home screen.</string>
+</resources>

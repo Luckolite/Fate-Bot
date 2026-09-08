@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Configure Fate for your Discord server and explore your rankings.">
+  <title>Mission Control — Fate</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260828-giveaways1">
+</head>
+<body class="dashboard-body">
+  <div class="space-noise" aria-hidden="true"></div>
+  <div class="cosmic-backdrop" aria-hidden="true">
+    <span class="nebula-cloud nebula-cloud-violet"></span>
+    <span class="nebula-cloud nebula-cloud-cyan"></span>
+    <span class="nebula-cloud nebula-cloud-rose"></span>
+    <span class="backdrop-planet"><i></i></span>
+    <span class="backdrop-moon"></span>
+    <span class="cosmic-comet cosmic-comet-one"></span>
+    <span class="cosmic-comet cosmic-comet-two"></span>
+    <span class="constellation constellation-one"><i></i><i></i><i></i><i></i><i></i></span>
+    <span class="constellation constellation-two"><i></i><i></i><i></i><i></i></span>
+  </div>
+
+  <main class="auth-gate" id="auth-gate" hidden>
+    <a class="brand auth-brand" href="/"><span class="brand-mark"><span></span></span><span>FATE</span></a>
+    <section class="auth-card glass">
+      <div class="auth-planet"><span>F</span></div>
+      <p class="eyebrow">Server dashboard</p>
+      <h1>Mission Control</h1>
+      <p>Sign in with Discord to manage Fate on servers where you have <strong>Manage Server</strong> permission.</p>
+      <a class="button button-primary auth-button" id="discord-login" href="/auth/discord?next=/dashboard">Continue with Discord <span>→</span></a>
+      <a class="button button-secondary auth-button" id="dev-login" href="/auth/dev" hidden>Enter local demo</a>
+      <a class="back-link" href="/">← Return to the public observatory</a>
+      <small>Fate can see your account and server list, but never reads your private messages.</small>
+    </section>
+  </main>
+
+  <div class="dashboard-shell" id="dashboard-shell" hidden>
+    <aside class="dashboard-sidebar glass">
+      <a class="brand" href="/"><span class="brand-mark"><span></span></span><span>FATE</span></a>
+      <div class="server-picker-wrap">
+        <label for="server-picker">SERVER</label>
+        <div class="server-picker">
+          <span class="server-avatar" id="server-avatar">FO</span>
+          <select id="server-picker" aria-label="Choose a server"></select>
+        </div>
+      </div>
+      <nav class="control-nav" aria-label="Dashboard sections">
+        <button class="active" data-panel="overview"><span>⌂</span>Overview</button>
+        <button data-panel="leaderboards"><span>≋</span>Leaderboards</button>
+        <button data-panel="general"><span>⌁</span>General</button>
+        <button data-panel="messages"><span>◌</span>Messages</button>
+        <button data-panel="ranking"><span>✦</span>XP &amp; Ranking</button>
+        <button data-panel="modules"><span>▦</span>Modules</button>
+        <button class="owner-nav" id="owner-nav" data-panel="owner" hidden><span>♛</span>Owner</button>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="/#commands">Command guide <span>↗</span></a>
+        <a href="/#features">Explore features <span>↗</span></a>
+      </div>
+    </aside>
+
+    <div class="control-main">
+      <header class="control-header">
+        <div><p class="eyebrow">Fate / Mission Control</p><h1 id="panel-title">Overview</h1></div>
+        <label class="mobile-server-control"><span>SERVER</span><select id="mobile-server-picker" aria-label="Choose a server on mobile"></select></label>
+        <div class="pilot-menu"><img id="pilot-avatar" alt=""><div><strong id="pilot-name">Pilot</strong><small id="pilot-role">Server manager</small></div><button id="logout-button" title="Sign out">↪</button></div>
+      </header>
+
+      <div class="loading-state" id="loading-state"><span class="spinner"></span><p>Loading your server…</p></div>
+      <div class="control-content" id="control-content" hidden>
+        <section class="control-panel active" data-panel-content="overview">
+          <div class="overview-grid">
+            <article class="system-card welcome-system">
+              <div><p class="eyebrow">Server overview</p><h2 id="welcome-heading">Welcome aboard.</h2><p>Manage Fate, see which features are enabled, and check your community’s rankings.</p></div>
+              <div class="system-orb"><span>F</span></div>
+            </article>
+            <button class="stat-card quick-stat" type="button" data-quick-edit="prefix"><small>COMMAND PREFIX</small><strong id="overview-prefix">.</strong><span>Personal prefixes <b id="overview-personal">allowed</b></span><i>EDIT</i></button>
+            <button class="stat-card quick-stat" type="button" data-quick-edit="purge"><small>BULK DELETE LIMIT</small><strong id="overview-purge">1,000</strong><span>messages at once</span><i>EDIT</i></button>
+            <button class="stat-card quick-stat" type="button" data-quick-edit="xp"><small>XP RANGE</small><strong id="overview-xp">1–1</strong><span>per eligible message</span><i>EDIT</i></button>
+            <button class="stat-card quick-stat verification-stat" type="button" data-quick-edit="verification"><small>VERIFICATION</small><strong id="overview-verification">OFFLINE</strong><span id="overview-verification-detail">verification is turned off</span><i>EDIT</i></button>
+          </div>
+
+          <section class="overview-command-center" aria-labelledby="overview-systems-heading">
+            <div class="overview-section-heading">
+              <div><p class="eyebrow">Core controls</p><h2 id="overview-systems-heading">The essentials, up front.</h2><p>Four high-impact controls for day-to-day server management.</p></div>
+              <button class="overview-link" id="open-modules-workspace" type="button">View all modules <span>→</span></button>
+            </div>
+            <div class="overview-core-grid" id="overview-core-grid" aria-label="Essential Fate controls"></div>
+          </section>
+
+          <section class="profile-section">
+            <div class="subheading"><div><p class="eyebrow">Pilot profile</p><h2>Your rank card, in real time.</h2></div><div class="segmented" id="rank-scope"><button class="active" data-scope="server">Server</button><button data-scope="global">Global</button></div></div>
+            <article class="web-rank-card" id="web-rank-card">
+              <div class="card-nebula"></div>
+              <div class="rank-card-top"><span>FATE // PILOT RECORD</span><strong id="card-rank">UNRANKED</strong></div>
+              <div class="card-avatar-wrap"><img id="card-avatar" alt="Your Discord avatar"><span></span></div>
+              <div class="card-identity"><small id="card-location">FATE OBSERVATORY</small><h3 id="card-name">Pilot</h3><p id="card-title">Use .set title to customize</p></div>
+              <div class="card-level"><small>LEVEL</small><strong id="card-level">0</strong></div>
+              <div class="card-progress-copy"><span id="card-progress-text">0 / 250 XP</span><span id="card-required">250 until next level</span></div>
+              <div class="card-progress"><span id="card-progress-bar"></span></div>
+            </article>
+          </section>
+        </section>
+
+        <section class="control-panel" data-panel-content="general">
+          <div class="panel-intro"><div><p class="eyebrow">Bot behavior</p><h2>General settings</h2><p>Choose how members use Fate and where commands are allowed.</p></div><span class="panel-icon purple">⌁</span></div>
+          <form class="settings-form" id="general-form">
+            <article class="setting-block"><div><h3>Command prefix</h3><p>The characters members type before a command. Use one to five characters with no spaces.</p></div><input id="prefix-input" maxlength="5" required aria-label="Command prefix"></article>
+            <article class="setting-block"><div><h3>Personal prefixes</h3><p>Allow members to choose a prefix that follows them across Fate servers.</p></div><label class="switch"><input id="personal-prefixes" type="checkbox"><span></span></label></article>
+            <article class="setting-block"><div><h3>Bot language</h3><p>Choose the language Fate uses for messages and command responses in this server.</p></div><select id="language-select" aria-label="Bot language"><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="pt">Português</option><option value="ar">العربية</option><option value="de">Deutsch</option><option value="ru">Русский</option><option value="ko">한국어</option><option value="it">Italiano</option><option value="pl">Polski</option><option value="ja">日本語</option><option value="sv">Svenska</option><option value="uk">Українська</option><option value="nl">Belgian (Dutch)</option></select></article>
+            <article class="setting-block"><div><h3>Bulk delete limit</h3><p>The most messages a moderator can remove with one command.</p></div><div class="number-field"><input id="purge-limit" type="number" min="1" max="3000"><span>messages</span></div></article>
+            <article class="setting-block"><div><h3>Confirm purge commands</h3><p>Ask moderators to confirm before Fate deletes messages. On by default; moderators can choose “Don’t ask again” at the prompt.</p></div><label class="switch"><input id="purge-confirmation" type="checkbox"><span></span></label></article>
+            <article class="setting-block"><div><h3>Warning channel</h3><p>Choose where staff should see member warning details.</p></div><select id="warn-channel"></select></article>
+            <article class="setting-block setting-stack"><div><h3>Command-free channels</h3><p>Prefix commands will be ignored in the selected channels.</p></div><div class="channel-chip-grid" id="disabled-channels"></div></article>
+            <div class="form-actions"><span class="unsaved-note" id="general-note">Changes take effect when you save.</span><button class="button button-primary" type="submit">Save general settings</button></div>
+          </form>
+        </section>
+
+        <section class="control-panel" data-panel-content="ranking">
+          <div class="panel-intro"><div><p class="eyebrow">Levels and XP</p><h2>Ranking settings</h2><p>Choose how members earn XP and level up. Existing progress stays the same.</p></div><span class="panel-icon gold">✦</span></div>
+          <form class="settings-form" id="ranking-form">
+            <article class="setting-block setting-pair"><div><h3>XP per eligible message</h3><p>Fate chooses a value within this range.</p></div><div class="dual-input"><label>MIN<input id="min-xp" type="number" min="0" max="100"></label><span>to</span><label>MAX<input id="max-xp" type="number" min="0" max="100"></label></div></article>
+            <article class="setting-block"><div><h3>XP needed for level one</h3><p>This sets the starting point for each level’s XP requirement.</p></div><div class="number-field"><input id="first-level-xp" type="number" min="100" max="2500"><span>XP</span></div></article>
+            <article class="setting-block setting-pair"><div><h3>Messages that can earn XP</h3><p>Limit how often messages earn XP to prevent spam.</p></div><div class="dual-input"><label>MESSAGES<input id="message-limit" type="number" min="1" max="3600"></label><span>per</span><label>SECONDS<input id="timeframe" type="number" min="1" max="3600"></label></div></article>
+            <article class="setting-block setting-stack"><div><h3>Channels without XP gain</h3><p>Messages in selected channels, including their threads, will not earn server or global XP.</p></div><div class="channel-chip-grid" id="xp-disabled-channels"></div></article>
+            <div class="form-actions"><span>Existing XP remains untouched.</span><button class="button button-primary" type="submit">Save ranking settings</button></div>
+          </form>
+        </section>
+
+        <section class="control-panel" data-panel-content="messages">
+          <div class="panel-intro"><div><p class="eyebrow">Message settings</p><h2>Automatic messages</h2><p>Choose where Fate posts level-ups and moderation results.</p></div><span class="panel-icon teal">◌</span></div>
+          <form class="settings-form" id="messages-form">
+            <article class="setting-block"><div><h3>Level-up celebrations</h3><p>Disable them, post beside the triggering message, or choose one channel.</p></div><select id="level-channel"></select></article>
+            <article class="setting-block"><div><h3>Moderation responses</h3><p>Keep staff actions tidy by routing command results to one channel.</p></div><select id="moderation-channel"></select></article>
+            <div class="form-actions"><span>Fate must be able to send messages in selected channels.</span><button class="button button-primary" type="submit">Save message settings</button></div>
+          </form>
+        </section>
+
+        <section class="control-panel" data-panel-content="modules">
+          <div class="panel-intro modules-intro">
+            <div><p class="eyebrow">Server features</p><h2>Modules</h2><p>See what is enabled, change its settings, or add another feature.</p></div>
+            <span class="panel-icon module-grid-icon">▦</span>
+          </div>
+          <div class="module-sync-note" id="module-sync-note"><span class="live-dot"></span><div><strong>Checking your module settings</strong><small>This only takes a moment.</small></div></div>
+          <div class="module-sections" id="module-sections" aria-live="polite"></div>
+        </section>
+
+        <section class="control-panel" data-panel-content="leaderboards" id="rankings">
+          <div class="panel-intro leaderboard-intro"><div><p class="eyebrow">Leaderboard observatory</p><h2>Who’s burning brightest?</h2><p>Switch between the same views available from Fate’s leaderboard commands.</p></div><label class="board-select"><span>VIEW</span><select id="board-picker"><option value="guild">Server — All time</option><option value="global">Global — All time</option><option value="monthly">Server — Last 30 days</option><option value="global_monthly">Global — Last 30 days</option><option value="commands">Commands — Last 30 days</option></select></label></div>
+          <div class="leaderboard-card">
+            <div class="leaderboard-header"><div><span class="live-dot"></span><small>LIVE RANKING FEED</small></div><strong id="board-title">Server — All time</strong></div>
+            <div class="podium" id="podium"></div>
+            <div class="leaderboard-list" id="leaderboard-list"></div>
+            <div class="empty-board" id="empty-board" hidden><span>◇</span><h3>No signals detected yet</h3><p>Earn some XP in Discord, then check this board again.</p></div>
+          </div>
+        </section>
+
+        <section class="control-panel owner-panel" data-panel-content="owner" id="owner-panel" hidden>
+          <div class="panel-intro owner-intro"><div><p class="eyebrow">Bot owner access</p><h2>Owner settings</h2><p>Control Fate-wide behavior that applies across every server.</p></div><span class="panel-icon owner">♛</span></div>
+          <article class="owner-scope-card">
+            <span class="owner-scope-icon" aria-hidden="true">♛</span>
+            <div><small>PRIVATE CONTROL PLANE</small><h3>Global Fate configuration</h3><p>Only Discord accounts listed as Fate bot owners can view or save these settings. Server managers never receive access.</p></div>
+            <span class="owner-private-badge">OWNER ONLY</span>
+          </article>
+          <section class="owner-memory-panel" aria-labelledby="owner-memory-title">
+            <header class="owner-memory-header">
+              <div><small>LIVE RUNTIME TELEMETRY</small><h3 id="owner-memory-title">Memory observatory</h3><p>Watch Fate's process footprint, host pressure, Python collector, and Discord message cache.</p></div>
+              <div class="owner-memory-refresh-wrap"><span id="owner-memory-status"><i class="live-dot"></i>Waiting for a sample</span><button id="owner-memory-refresh" type="button">&#8635; Refresh</button></div>
+            </header>
+            <div class="owner-memory-summary" aria-live="polite">
+              <article class="owner-memory-card runtime"><small>FATE PROCESS</small><strong id="owner-memory-rss">—</strong><p><span id="owner-memory-tree">—</span> across the process tree</p><div class="owner-memory-meter"><span id="owner-memory-process-meter"></span></div><footer><span id="owner-memory-process-percent">—</span> of physical RAM</footer></article>
+              <article class="owner-memory-card system"><small>HOST MEMORY</small><strong id="owner-memory-system-used">—</strong><p>of <span id="owner-memory-system-total">—</span> in use</p><div class="owner-memory-meter"><span id="owner-memory-system-meter"></span></div><footer><span id="owner-memory-available">—</span> available · <b id="owner-memory-pressure">—</b></footer></article>
+              <article class="owner-memory-card swap"><small>SWAP / PAGEFILE</small><strong id="owner-memory-swap-used">—</strong><p>of <span id="owner-memory-swap-total">—</span> capacity</p><div class="owner-memory-meter"><span id="owner-memory-swap-meter"></span></div><footer><span id="owner-memory-swap-percent">—</span> used</footer></article>
+              <article class="owner-memory-card cache"><small>DISCORD CACHE</small><strong id="owner-memory-cache-current">—</strong><p>of <span id="owner-memory-cache-capacity">—</span> message slots</p><div class="owner-memory-meter"><span id="owner-memory-cache-meter"></span></div><footer id="owner-memory-cache-note">Live when Fate is mounted</footer></article>
+            </div>
+            <article class="owner-memory-trend">
+              <header><div><small>RECENT FATE RSS</small><strong>Browser-session trend</strong></div><span id="owner-memory-trend-range">Waiting for samples</span></header>
+              <svg viewBox="0 0 600 96" preserveAspectRatio="none" role="img" aria-label="Recent Fate resident memory trend"><defs><linearGradient id="owner-memory-area-gradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#ffbd62" stop-opacity=".32"></stop><stop offset="100%" stop-color="#a05cff" stop-opacity="0"></stop></linearGradient></defs><polygon id="owner-memory-trend-area" points="0,96 600,96" fill="url(#owner-memory-area-gradient)"></polygon><polyline id="owner-memory-trend-line" points="" fill="none" vector-effect="non-scaling-stroke"></polyline></svg>
+            </article>
+            <div class="owner-memory-details">
+              <article><header><span>01</span><div><strong>Process footprint</strong><small>What the Fate runtime has reserved and retained.</small></div></header><dl><div><dt>Unique / private</dt><dd id="owner-memory-unique">—</dd></div><div><dt>Virtual memory</dt><dd id="owner-memory-vms">—</dd></div><div><dt>Peak resident</dt><dd id="owner-memory-peak">—</dd></div><div><dt>Child processes</dt><dd id="owner-memory-children">—</dd></div><div><dt>Runtime uptime</dt><dd id="owner-memory-uptime">—</dd></div></dl></article>
+              <article><header><span>02</span><div><strong>Python collector</strong><small>Interpreter allocation and garbage-collection signals.</small></div></header><dl><div><dt>Tracked objects</dt><dd id="owner-memory-objects">—</dd></div><div><dt>Allocated blocks</dt><dd id="owner-memory-blocks">—</dd></div><div><dt>Generation counts</dt><dd id="owner-memory-generations">—</dd></div><div><dt>Collections</dt><dd id="owner-memory-collections">—</dd></div><div><dt>Uncollectable</dt><dd id="owner-memory-uncollectable">—</dd></div></dl></article>
+              <article><header><span>03</span><div><strong>Host breakdown</strong><small>Cross-platform physical, process, and paged-memory detail.</small></div></header><dl><div><dt>Physical free</dt><dd id="owner-memory-host-free">—</dd></div><div><dt>System utilization</dt><dd id="owner-memory-host-utilization">—</dd></div><div><dt>Fate process share</dt><dd id="owner-memory-host-process-share">—</dd></div><div><dt>Swap available</dt><dd id="owner-memory-swap-free">—</dd></div><div><dt>Page-in / page-out</dt><dd id="owner-memory-paging">—</dd></div></dl></article>
+            </div>
+            <article class="owner-memory-processes"><header><div><small>PROCESS TREE</small><strong>Memory consumers started by Fate</strong></div><span id="owner-memory-process-count">—</span></header><div id="owner-memory-process-list"></div></article>
+          </section>
+          <form class="settings-form owner-settings-form" id="owner-form" autocomplete="off">
+            <article class="setting-block"><div><h3>Bot activity</h3><p>The game text shown beneath Fate’s name. This updates the live presence when Fate is connected.</p></div><input id="owner-activity-status" maxlength="128" required aria-label="Bot activity" placeholder=".uno | .connect4 | .tictactoe"></article>
+            <article class="setting-block"><div><h3>Theme color</h3><p>The global accent used by Fate embeds and owner-managed responses.</p></div><label class="owner-color-control"><input id="owner-theme-color" type="color" aria-label="Theme color"><output id="owner-theme-color-value" for="owner-theme-color">#001269</output></label></article>
+            <article class="setting-block"><div><h3>Debug bot mode</h3><p>Enable Fate’s debug-only bot behavior independently of diagnostic log volume.</p></div><label class="switch"><input id="owner-debug-mode" type="checkbox" aria-label="Enable debug bot mode"><span></span></label></article>
+            <article class="setting-block"><div><h3>Debug logging</h3><p>Include verbose diagnostics and forward Discord’s raw debug log. Leave this off to reduce log spam.</p></div><label class="switch"><input id="owner-debug-logging" type="checkbox" aria-label="Enable debug logging"><span></span></label></article>
+            <article class="setting-block"><div><h3>Message cache capacity</h3><p>The maximum Discord messages retained in memory. Changing this takes effect after Fate restarts.</p></div><div class="number-field"><input id="owner-max-cached-messages" type="number" min="100" max="500000" required><span>messages</span></div></article>
+            <div class="form-actions owner-actions"><span id="owner-note">Owner settings load when you open this tab.</span><button class="button button-primary" id="owner-save" type="submit">Save owner settings</button></div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-dialog quick-dialog" id="quick-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-edit-title" hidden>
+    <form id="quick-edit-form">
+      <header class="dialog-header"><div><p class="eyebrow">Quick edit</p><h2 id="quick-edit-title">Update setting</h2></div><button class="dialog-close" type="button" data-close-dialog="quick-edit-dialog" aria-label="Close">×</button></header>
+      <div class="dialog-body" id="quick-edit-body"></div>
+      <footer class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog="quick-edit-dialog">Cancel</button><button class="button button-primary" type="submit">Save change</button></footer>
+    </form>
+  </div>
+
+  <div class="dashboard-dialog module-dialog" id="module-dialog" role="dialog" aria-modal="true" aria-labelledby="module-dialog-title" hidden>
+    <form id="module-form">
+      <header class="dialog-header module-dialog-header"><span class="module-dialog-icon" id="module-dialog-icon">◆</span><div><p class="eyebrow" id="module-dialog-eyebrow">Feature settings</p><h2 id="module-dialog-title">Module settings</h2><p id="module-dialog-copy"></p></div><button class="dialog-close" type="button" data-close-dialog="module-dialog" aria-label="Close">×</button></header>
+      <div class="dialog-body module-dialog-body" id="module-dialog-body"></div>
+      <footer class="dialog-actions"><button class="button button-danger" id="module-delete" type="button" hidden>Delete menu</button><span></span><button class="button button-secondary" type="button" data-close-dialog="module-dialog">Cancel</button><button class="button button-primary" id="module-save" type="submit">Save settings</button></footer>
+    </form>
+  </div>
+
+  <div class="dashboard-dialog confirmation-dialog" id="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" hidden>
+    <form id="confirmation-form">
+      <header class="dialog-header"><span class="confirmation-icon">!</span><div><p class="eyebrow">Please confirm</p><h2 id="confirmation-title">Confirm action</h2><p id="confirmation-copy"></p></div><button class="dialog-close" type="button" data-close-dialog="confirmation-dialog" aria-label="Close">×</button></header>
+      <footer class="dialog-actions"><span></span><button class="button button-secondary" type="button" data-close-dialog="confirmation-dialog">Cancel</button><button class="button button-danger" id="confirmation-accept" type="submit">Confirm</button></footer>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/runtime-reload.js?v=20260808-reload1" defer></script>
+  <script src="/static/dashboard.js?v=20260828-giveaways1" defer></script>
+</body>
+</html>

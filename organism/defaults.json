@@ -1,0 +1,68 @@
+{
+  "schema_version": "organism.config.v1",
+  "baseline_state": {
+    "activation": 0.2,
+    "pleasantness": 0.1,
+    "interaction_safety": 0.65,
+    "agency": 0.65,
+    "uncertainty": 0.25,
+    "load": 0.2
+  },
+  "cue_coefficients": {
+    "threat": 0.42,
+    "boundary_pressure": 0.2,
+    "uncertainty": 0.08,
+    "novelty": 0.04,
+    "demand": 0.08,
+    "low_controllability": 0.1,
+    "energy_cost": 0.08
+  },
+  "learning": {
+    "cue_learning_rate": 0.08,
+    "cue_event_delta_cap": 0.04,
+    "cue_weight_min": 0.5,
+    "cue_weight_max": 1.5,
+    "strategy_learning_rate": 0.06,
+    "strategy_adaptive_span": 0.15,
+    "historical_influence_cap": 0.2,
+    "minimum_guarded_episodes": 2,
+    "evidence_retention_days": 180,
+    "max_evidence_events": 512,
+    "max_evidence_per_partition": 64,
+    "owner_reserved_evidence_events": 64,
+    "max_retraction_tombstones": 512,
+    "max_retraction_tombstones_per_partition": 64,
+    "authorization_ttl_seconds": 86400,
+    "max_authorization_tokens": 4096,
+    "severe_guard_hours": 24
+  },
+  "state": {
+    "recovery_half_life_hours": 4,
+    "event_gain": 0.55,
+    "defensive_release_ratio": 0.12,
+    "regulated_release_boost": 0.12,
+    "mode_temperature": 0.75,
+    "mode_hysteresis": 0.08,
+    "prompt_ttl_seconds": 300,
+    "max_future_skew_seconds": 300,
+    "max_observation_age_seconds": 300,
+    "recent_observation_limit": 256,
+    "max_transient_states": 256,
+    "transient_state_retention_hours": 24
+  },
+  "strategy_baselines": {
+    "orient_and_verify": 0.5,
+    "hold_boundary": 0.5,
+    "reduce_exposure": 0.5,
+    "slow_the_exchange": 0.5,
+    "request_human_review": 0.5,
+    "deescalate_mobilization": 0.5
+  },
+  "capacity_baselines": {
+    "regulation": 0.5,
+    "boundary": 0.5,
+    "recovery": 0.5,
+    "connection": 0.5,
+    "uncertainty_tolerance": 0.5
+  }
+}

@@ -1,0 +1,2 @@
+"""Fate Dashboard application."""
+
