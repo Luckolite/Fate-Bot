@@ -1,0 +1,263 @@
+"""
+cogs.utility.case_manager
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A cog for managing the moderation cases
+
+:copyright: (C) 2021-present Luckolite, All Rights Reserved
+:license: Proprietary, see LICENSE for details
+"""
+
+import asyncio
+from contextlib import suppress
+from time import time
+
+import aiomysql
+import discord
+from discord.ext import commands
+
+
+class CaseManager(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    async def add_case(self, guild_id: int, user_id, action: str, reason, link: str, created_by):
+        if reason:
+            reason = self.bot.encode(reason)
+        async with self.bot.utils.cursor() as cur:
+            await cur.execute(
+                "select case_number from cases "
+                "where guild_id = %s "
+                "order by case_number desc "
+                "limit 1;",
+                (guild_id,),
+            )
+            results = await cur.fetchone()
+            if results:
+                case_number = results[0] + 1
+            else:
+                case_number = 1
+            now = time()
+            for _ in range(3):
+                try:
+                    await cur.execute(
+                        "insert into cases values (%s, %s, %s, %s, %s, %s, %s, %s);",
+                        (
+                            guild_id,
+                            user_id,
+                            action,
+                            reason,
+                            link,
+                            case_number,
+                            created_by,
+                            now,
+                        ),
+                    )
+                    break
+                except aiomysql.IntegrityError:
+                    case_number += 1
+            else:
+                return None
+        return case_number
+
+    @commands.command(
+        name="mod-logs",
+        aliases=["mod_logs", "modlogs", "infractions"],
+        description="Shows the recent cases"
+    )
+    @commands.cooldown(2, 5, commands.BucketType.user)
+    @commands.guild_only()
+    @commands.has_permissions(view_audit_log=True)
+    @commands.bot_has_permissions(
+        embed_links=True, add_reactions=True, manage_messages=True
+    )
+    async def mod_logs(self, ctx, *, args = None):
+        guild_id = ctx.guild.id
+        has_value = lambda value: value and value != "None" and value != "Unspecified"
+        any_large = lambda values: any(len(str(self.bot.get_user(v))) > 10 for v in values)
+        nl = "\n"
+
+        # Get logs from a specific user
+        if ctx.message.raw_mentions or (args.isdigit() if args else False):
+            usr_id = ctx.message.raw_mentions[0] if ctx.message.raw_mentions else int(args)
+            async with self.bot.utils.cursor() as cur:
+                await cur.execute(
+                    "select user_id, case_action, reason, link, case_number, created_by, created_at "
+                    "from cases where guild_id = %s and user_id = %s "
+                    "order by case_number desc;",
+                    (guild_id, usr_id),
+                )
+                results = await cur.fetchall()
+            if not results:
+                return await ctx.send("There are no mod logs for that user")
+            lines = [
+                f"#{case_number}. [{action}]({link}) - from `{self.bot.get_user(created_by)}`" \
+                f"{f'{nl}> {self.bot.decode(reason)}' if reason else ''}"
+                for i, (user_id, action, reason, link, case_number, created_by, created_at) in enumerate(
+                    results[:16]
+                )
+            ]
+
+        # Get mod logs with a specific reason
+        elif args:
+            query = f"%{args}%"
+            async with self.bot.utils.cursor() as cur:
+                await cur.execute(
+                    "select user_id, case_action, reason, link, case_number, created_by, created_at "
+                    "from cases where guild_id = %s and reason like %s "
+                    "order by case_number desc;",
+                    (guild_id, query),
+                )
+                results = await cur.fetchall()
+            if not results:
+                return await ctx.send("There are no mod logs for that reason")
+            lines = [
+                f"#{case_number}. {f'`{self.bot.get_user(user_id)}` - ' if user_id else ''}" \
+                f"[{action}]({link}){f' - from `{self.bot.get_user(created_by)}`' if created_by else ''}" \
+                f"{f'{nl}> {self.bot.decode(reason)}' if reason else ''}"
+                for i, (user_id, action, reason, link, case_number, created_by, created_at) in enumerate(
+                    results[:16]
+                )
+            ]
+
+        # Get all the mod logs
+        else:
+            async with self.bot.utils.cursor() as cur:
+                await cur.execute(
+                    "select user_id, case_action, reason, link, case_number, created_by, created_at "
+                    "from cases where guild_id = %s order by case_number desc;",
+                    (guild_id,),
+                )
+                results = await cur.fetchall()
+            if not results:
+                return await ctx.send("There are no mod logs in this server")
+
+            lines = [
+                f"**Case #{case_number}.** {f'**`{str(self.bot.get_user(user_id))}`** - ' if user_id else ''}" \
+                f"[{action}]({link}){f' - from **{self.bot.get_user(created_by)}**' if created_by else ''}" \
+                f"\n> `{self.bot.decode(reason) if reason else 'unspecified reason'}`"
+                # f"{f'{nl}> `{reason}`' if has_value(reason) else nl}"
+                for i, (user_id, action, reason, link, case_number, created_by, created_at) in enumerate(
+                    results[:16]
+                )
+            ]
+
+        embeds = []
+        e = discord.Embed(color=self.bot.theme_color)
+        e.set_author(name="Moderation Logs", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+        e.description = ""
+        for i, line in enumerate(lines):
+            if i != 0 and i % 9 == 0:
+                embeds.append(e)
+                e = discord.Embed(color=self.bot.theme_color)
+                e.set_author(name="Mod Logs", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+                e.description = ""
+            e.description += f"\n{line}"
+            if i + 1 == len(lines):
+                embeds.append(e)
+
+        if len(embeds) == 1:
+            await ctx.send(embed=e)
+            return None
+
+        async def wait_for_reaction():
+            try:
+                reaction, user = await self.bot.wait_for(
+                    "reaction_add",
+                    timeout=60.0,
+                    check=lambda r, u: (
+                        u == ctx.author
+                        and r.message.id == msg.id
+                        and str(r.emoji) in emojis
+                    ),
+                )
+            except asyncio.TimeoutError:
+                return [None, None]
+            else:
+                return [reaction, str(reaction.emoji)]
+
+        def index_check(index):
+            """ Ensures the index isn't too high or too low """
+            if index > len(embeds) - 1:
+                index = len(embeds) - 1
+            if index < 0:
+                index = 0
+            return index
+
+        async def add_emojis_task():
+            """ So the bot can read reactions before all are added """
+            for emoji in emojis:
+                await msg.add_reaction(emoji)
+            return
+
+        index = 0
+        emojis = ["🏡", "⏪", "⏩"]
+        embeds[0].set_footer(
+            text=f"Page {index + 1}/{len(embeds)}"
+        )
+        msg = await ctx.send(embed=embeds[0])
+        await add_emojis_task()
+
+        while True:
+            await asyncio.sleep(0.5)
+            reaction, emoji = await wait_for_reaction()
+            if not reaction:
+                with suppress(Exception):
+                    await msg.clear_reactions()
+                return
+
+            if emoji == emojis[0]:  # home
+                index = 0
+
+            if emoji == emojis[1]:
+                index -= 1
+
+            if emoji == emojis[2]:
+                index += 1
+                index = index_check(index)
+
+            if index > len(embeds) - 1:
+                index = len(embeds) - 1
+
+            if index < 0:
+                index = 0
+
+            embeds[index].set_footer(
+                text=f"Page {index + 1}/{len(embeds)}"
+            )
+            await msg.edit(embed=embeds[index])
+            await msg.remove_reaction(reaction, ctx.author)
+
+    @commands.command(
+        name="del-log",
+        aliases=["del_log", "dellog", "del-modlog"],
+        description="Deletes a case number"
+    )
+    @commands.cooldown(2, 5, commands.BucketType.user)
+    @commands.guild_only()
+    @commands.has_permissions(administrator=True)
+    async def del_log(self, ctx, case_number: int):
+        guild_id = ctx.guild.id
+        async with self.bot.utils.cursor() as cur:
+            await cur.execute(
+                "select case_number from cases "
+                "where guild_id = %s "
+                "and case_number = %s "
+                "limit 1;",
+                (guild_id, case_number),
+            )
+            results = await cur.fetchone()
+            if not results:
+                return await ctx.send("There is no case by that number")
+            await cur.execute(
+                "delete from cases "
+                "where guild_id = %s "
+                "and case_number = %s "
+                "limit 1;",
+                (guild_id, case_number),
+            )
+        await ctx.send(f"Deleted case #{case_number}")
+
+
+async def setup(bot):
+    await bot.add_cog(CaseManager(bot), override=True)

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialKeyguardLayout="@layout/widget_fate_compact"
+    android:initialLayout="@layout/widget_fate"
+    android:minWidth="180dp"
+    android:minHeight="88dp"
+    android:minResizeWidth="140dp"
+    android:minResizeHeight="72dp"
+    android:previewLayout="@layout/widget_fate"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen|keyguard" />

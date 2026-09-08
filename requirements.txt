@@ -1,0 +1,26 @@
+# Discord runtime with user-install and private-channel command support.
+# Fate's production extensions do not use Discord voice; omitting the voice
+# extra avoids discord.py's vulnerable PyNaCl<1.6 compatibility constraint.
+discord.py==2.7.1
+discord-sentry-reporting==2.0.4
+
+# Async I/O and data stores
+aiofiles==25.1.0
+aiohttp==3.14.3
+aiomysql==0.3.2
+motor==3.7.1
+pymongo==4.17.0
+dnspython==2.8.0
+PyMySQL==1.2.0
+
+# Images, games, and utility commands
+numpy==2.2.6
+Pillow==12.3.0
+psutil==7.2.2
+requests==2.34.2
+termcolor==3.3.0
+Wand==0.7.2
+
+# Authentication and time handling
+cryptography==50.0.0
+pytz==2026.3.post1

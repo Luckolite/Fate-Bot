@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_background" android:gravity="center_vertical" android:orientation="vertical" android:padding="11dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:id="@+id/instance_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="FATE" android:textColor="@color/fate_text" android:textSize="16sp" />
+        <TextView android:id="@+id/status_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="SYNCING" android:textColor="@color/fate_gold" android:textSize="11sp" />
+        <TextView android:id="@+id/widget_settings_button" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="⚙" android:textColor="@color/fate_muted" android:textSize="15sp" />
+        <TextView android:id="@+id/scan_button" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="⌁" android:textColor="@color/fate_gold" android:textSize="18sp" />
+        <TextView android:id="@+id/refresh_button" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="↻" android:textColor="@color/fate_text" android:textSize="18sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="5dp" android:layout_weight="1" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/metric_1_panel" style="@style/WidgetMetricPanel" android:layout_marginEnd="3dp"><TextView android:id="@+id/metric_1_value" style="@style/WidgetMetricValueCompact" /><TextView android:id="@+id/metric_1_label" style="@style/WidgetMetricLabel" /></LinearLayout>
+        <LinearLayout android:id="@+id/metric_2_panel" style="@style/WidgetMetricPanel" android:layout_marginStart="3dp"><TextView android:id="@+id/metric_2_value" style="@style/WidgetMetricValueCompact" /><TextView android:id="@+id/metric_2_label" style="@style/WidgetMetricLabel" /></LinearLayout>
+    </LinearLayout>
+    <TextView android:id="@+id/health_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:ellipsize="end" android:maxLines="1" android:text="Waiting for health" android:textColor="@color/fate_muted" android:textSize="11sp" />
+    <TextView android:id="@+id/uptime_text" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
+    <TextView android:id="@+id/updated_text" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
+</LinearLayout>

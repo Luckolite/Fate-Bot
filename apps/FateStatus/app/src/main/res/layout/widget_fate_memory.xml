@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/memory_widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_background" android:orientation="vertical" android:padding="14dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/memory_header" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="FATE MEMORY" android:textColor="@color/fate_gold" android:textSize="10sp" />
+            <TextView android:id="@+id/memory_total" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="—" android:textColor="@color/fate_text" android:textSize="26sp" />
+        </LinearLayout>
+        <TextView android:id="@+id/memory_refresh" android:layout_width="40dp" android:layout_height="40dp" android:gravity="center" android:text="↻" android:textColor="@color/fate_text" android:textSize="22sp" />
+    </LinearLayout>
+    <TextView android:id="@+id/memory_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:text="Waiting for Fate process data" android:textColor="@color/fate_muted" android:textSize="9sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="8dp" android:layout_weight="1" android:orientation="vertical">
+        <LinearLayout android:id="@+id/memory_row_1" style="@style/MemoryWidgetRow"><LinearLayout style="@style/MemoryWidgetTextRow"><TextView android:id="@+id/memory_label_1" style="@style/MemoryWidgetLabel" /><TextView android:id="@+id/memory_value_1" style="@style/MemoryWidgetValue" /></LinearLayout><ProgressBar android:id="@+id/memory_bar_1" style="@style/MemoryWidgetBar" /></LinearLayout>
+        <LinearLayout android:id="@+id/memory_row_2" style="@style/MemoryWidgetRow"><LinearLayout style="@style/MemoryWidgetTextRow"><TextView android:id="@+id/memory_label_2" style="@style/MemoryWidgetLabel" /><TextView android:id="@+id/memory_value_2" style="@style/MemoryWidgetValue" /></LinearLayout><ProgressBar android:id="@+id/memory_bar_2" style="@style/MemoryWidgetBar" /></LinearLayout>
+        <LinearLayout android:id="@+id/memory_row_3" style="@style/MemoryWidgetRow"><LinearLayout style="@style/MemoryWidgetTextRow"><TextView android:id="@+id/memory_label_3" style="@style/MemoryWidgetLabel" /><TextView android:id="@+id/memory_value_3" style="@style/MemoryWidgetValue" /></LinearLayout><ProgressBar android:id="@+id/memory_bar_3" style="@style/MemoryWidgetBar" /></LinearLayout>
+        <LinearLayout android:id="@+id/memory_row_4" style="@style/MemoryWidgetRow"><LinearLayout style="@style/MemoryWidgetTextRow"><TextView android:id="@+id/memory_label_4" style="@style/MemoryWidgetLabel" /><TextView android:id="@+id/memory_value_4" style="@style/MemoryWidgetValue" /></LinearLayout><ProgressBar android:id="@+id/memory_bar_4" style="@style/MemoryWidgetBar" /></LinearLayout>
+    </LinearLayout>
+    <TextView android:id="@+id/memory_updated" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="end" android:text="No data yet" android:textColor="@color/fate_muted" android:textSize="9sp" />
+</LinearLayout>
