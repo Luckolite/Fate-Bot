@@ -87,11 +87,22 @@ class ErrorHandler(commands.Cog):
         self.reaction_cooldown = Cooldown(1, 4)
 
         self._previous_exception_handler = bot.loop.get_exception_handler()
+        previous_owner = getattr(self._previous_exception_handler, "__self__", None)
+        if (
+            type(previous_owner).__module__ == __name__
+            and type(previous_owner).__name__ == type(self).__name__
+        ):
+            # A hot reload keeps the old handler installed until this replacement
+            # is ready. Preserve its original fallback, not the retired cog.
+            self._previous_exception_handler = previous_owner._previous_exception_handler
         bot.loop.set_exception_handler(self.task_exception_handler)
 
     def cog_unload(self) -> None:
         handler = self.bot.loop.get_exception_handler()
-        if getattr(handler, "__self__", None) is self:
+        if (
+            getattr(handler, "__self__", None) is self
+            and not getattr(self.bot, "_preserve_error_handler_on_reload", False)
+        ):
             self.bot.loop.set_exception_handler(self._previous_exception_handler)
         for task in tuple(self._report_tasks):
             task.cancel()
@@ -152,8 +163,7 @@ class ErrorHandler(commands.Cog):
             and ctx.command.cog
             and ctx.command.cog.__class__.__name__ == "Moderation"
         ):
-            module = self.bot.cogs["Moderation"]
-            await module.cog_after_invoke(ctx)
+            await ctx.command.cog.cog_after_invoke(ctx)
         if ignore_if_handler and ctx.cog and ctx.cog.has_error_handler():
             return
 

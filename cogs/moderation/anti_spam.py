@@ -1633,6 +1633,10 @@ class AntiSpam(commands.Cog):
             discord.NotFound,
             discord.HTTPException,
         ) as error:
+            if isinstance(error, discord.NotFound) and error.code == 10007:
+                # The member left or another moderator already removed them.
+                # There is nobody left to punish; this is not a bot failure.
+                return
             await self._moderation_failure(
                 message, primary, action, str(error)
             )

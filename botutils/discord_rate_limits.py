@@ -5,7 +5,7 @@ sleep and retry. It records normalized endpoint paths for 429 responses, retaini
 channel and message IDs for incident tracing while excluding query strings,
 payloads, response bodies, and secret webhook/interaction tokens. It never reports
 through Discord while Discord itself is rate limited. Authenticated bot requests
-are paced before writing their headers; discord.py retains its per-route retry
+are paced before acquiring a connection; discord.py retains its per-route retry
 handling, and interaction callbacks keep their separate request allowance.
 """
 
@@ -16,7 +16,7 @@ import re
 from collections.abc import Mapping
 from contextlib import suppress
 from math import isfinite
-from time import monotonic
+from time import monotonic, time
 from typing import Any
 
 import aiohttp
@@ -29,6 +29,20 @@ _API_PREFIX = re.compile(r"^/api(?:/v\d+)?")
 _SNOWFLAKE = re.compile(r"^\d{5,25}$")
 _REDACT_NEXT_SEGMENT = frozenset({"invites", "templates"})
 _SAFE_STATIC_SEGMENT = re.compile(r"^[a-z0-9_@.*-]+$")
+_MESSAGE_DELETE_PATH = re.compile(r"^/channels/(\d+)/messages/(\d+)$")
+# Conservative spacing for the old-message sublimit observed during purges.
+# Discord's response deadlines can extend this; it is not a global REST cap.
+OLD_MESSAGE_DELETE_INTERVAL = 1.1
+
+
+def _old_delete_channel(params: Any) -> str | None:
+    if str(getattr(params, "method", "")).upper() != "DELETE":
+        return None
+    match = _MESSAGE_DELETE_PATH.fullmatch(_API_PREFIX.sub("", params.url.path, count=1))
+    if match is None:
+        return None
+    created_at = ((int(match[2]) >> 22) + 1420070400000) / 1000
+    return match[1] if time() - created_at >= 14 * 24 * 60 * 60 else None
 
 
 def normalize_discord_route(method: Any, url: Any) -> str | None:
@@ -117,26 +131,40 @@ class DiscordRateLimitTracker:
         self._request_lock = asyncio.Lock()
         self._next_request_at = 0.0
         self._global_retry_at = 0.0
-        # This hook runs after connector/bucket waits, immediately before writing
-        # headers, and covers discord.py retries as well as initial attempts.
-        self.trace.on_request_headers_sent.append(self._before_request_headers)
+        self._old_delete_deadlines: dict[str, float] = {}
+        # Wait before aiohttp acquires a connection. Sleeping in the headers hook
+        # holds an idle transport that Discord can close during a slow purge.
+        # Each discord.py retry starts a new session.request and runs this hook.
+        self.trace.on_request_start.append(self._before_request_start)
         self.trace.on_request_end.append(self._on_request_end)
 
-    async def _before_request_headers(self, _session: Any, _context: Any, params: Any) -> None:
+    async def _before_request_start(self, _session: Any, _context: Any, params: Any) -> None:
         if not self._is_discord_api_request(params.url):
             return
         authorization = str(params.headers.get("Authorization", ""))
         path = _API_PREFIX.sub("", params.url.path, count=1)
         if not authorization.startswith("Bot ") or path.startswith("/interactions/"):
             return
-        async with self._request_lock:
-            while True:
-                delay = max(self._next_request_at, self._global_retry_at) - monotonic()
+        channel_id = _old_delete_channel(params)
+        while True:
+            async with self._request_lock:
+                current = monotonic()
+                self._old_delete_deadlines = {
+                    channel: deadline for channel, deadline in self._old_delete_deadlines.items()
+                    if deadline > current
+                }
+                delay = max(
+                    self._next_request_at, self._global_retry_at,
+                    self._old_delete_deadlines.get(channel_id, 0.0),
+                ) - current
                 if delay <= 0:
-                    break
-                await asyncio.sleep(delay)
-            # Smooth 40 requests/second, leaving headroom below Discord's 50/s.
-            self._next_request_at = monotonic() + 0.025
+                    # Smooth 40 requests/second, leaving headroom below Discord's 50/s.
+                    self._next_request_at = current + 0.025
+                    if channel_id is not None:
+                        self._old_delete_deadlines[channel_id] = current + OLD_MESSAGE_DELETE_INTERVAL
+                    return
+            # A channel's slow purge must not hold the global lock while waiting.
+            await asyncio.sleep(delay)
 
     @staticmethod
     def _is_discord_api_request(url: Any) -> bool:
@@ -154,6 +182,19 @@ class DiscordRateLimitTracker:
                 return
             response = params.response
             metrics = classify_discord_response(int(response.status), response.headers)
+            channel_id = _old_delete_channel(params)
+            if channel_id is not None:
+                with suppress(TypeError, ValueError):
+                    delay = 0.0
+                    if int(response.status) == 429:
+                        delay = float(response.headers.get("Retry-After", 0))
+                    elif response.headers.get("X-RateLimit-Remaining") == "0":
+                        delay = float(response.headers.get("X-RateLimit-Reset-After", 0))
+                    if isfinite(delay) and delay > 0:
+                        self._old_delete_deadlines[channel_id] = max(
+                            self._old_delete_deadlines.get(channel_id, 0.0),
+                            monotonic() + delay + 0.1,
+                        )
             if GLOBAL_RATE_LIMIT_METRIC in metrics:
                 with suppress(TypeError, ValueError):
                     retry_after = float(response.headers.get("Retry-After", 0))

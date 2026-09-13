@@ -21,6 +21,15 @@ class Attributes:
     """ Class containing shortcut functions for denoting moderation statuses """
     def __init__(self, bot) -> None:
         self.bot = bot
+        self._moderation_config = {}
+        self._get_moderation_config()
+
+    def _get_moderation_config(self):
+        """Keep permission checks available while the cog is being replaced."""
+        mod = self.bot.cogs.get("Moderation")
+        if mod is not None:
+            self._moderation_config = mod.config
+        return self._moderation_config
 
     def is_moderator(self, member: discord.Member) -> bool:
         """ Checks if a member has admin, or usermod permissions """
@@ -29,11 +38,11 @@ class Attributes:
         if member.guild_permissions.administrator:
             return True
         guild_id = str(member.guild.id)
-        mod = self.bot.cogs["Moderation"]  # type: ignore
-        if guild_id in mod.config:
-            if member.id in mod.config[guild_id]["usermod"]:
+        config = self._get_moderation_config()
+        if guild_id in config:
+            if member.id in config[guild_id]["usermod"]:
                 return True
-            if any(r.id in mod.config[guild_id]["rolemod"] for r in member.roles):
+            if any(r.id in config[guild_id]["rolemod"] for r in member.roles):
                 return True
         return False
 
@@ -56,13 +65,18 @@ class Attributes:
 
         # Check the Moderation cog for a configured mute role
         guild_id = str(guild.id)
-        mod = self.bot.cogs["Moderation"]  # type: ignore
-        if guild_id in mod.config and mod.config[guild_id]["mute_role"]:
-            role = guild.get_role(mod.config[guild_id]["mute_role"])
+        mod = self.bot.cogs.get("Moderation")
+        config = self._get_moderation_config()
+        if guild_id in config and config[guild_id]["mute_role"]:
+            role = guild.get_role(config[guild_id]["mute_role"])
             if role:
                 return role
-            else:
+            elif mod is not None:
                 mod.config[guild_id]["mute_role"] = None
+
+        # The saved settings are read-only until their owning cog is available.
+        if mod is None:
+            return None
 
         # Get all the related roles
         roles = []

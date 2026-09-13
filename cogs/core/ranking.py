@@ -28,6 +28,7 @@ from pymysql.err import DataError, InternalError, OperationalError
 
 from botutils import colors, get_prefix, url_from, Menu, cache_rewrite, GetConfirmation
 from botutils.pillow import add_corners
+from botutils.global_xp_guard import GlobalXPGuard, REASONS
 from checks.exceptions import IgnoredExit
 
 
@@ -148,10 +149,7 @@ class Ranking(commands.Cog):
         self.cd = {}
         self.global_cd = {}
         self.spam_cd = {}
-        self.macro_cd = {}
-
-        self.pending_global = {}
-        self.pending_global_monthly = {}
+        self.global_guard = GlobalXPGuard(bot)
         self.pending_guild = {}
         self.pending_monthly = {}
         self.pending_commands = {}
@@ -178,7 +176,6 @@ class Ranking(commands.Cog):
         self.cooldown_cleanup_task.start()
         self.xp_flush_task.start()
 
-        self.active = {}
         self.assets = None
 
     async def cog_load(self):
@@ -215,8 +212,6 @@ class Ranking(commands.Cog):
             mapping[key] = mapping.get(key, 0) + amount
 
     def restore_batches(self, batches) -> None:
-        self.merge_pending(self.pending_global, batches["global"])
-        self.merge_pending(self.pending_global_monthly, batches["global_monthly"])
         self.merge_pending(self.pending_guild, batches["guild"])
         self.merge_pending(self.pending_monthly, batches["monthly"])
         self.merge_pending(self.pending_commands, batches["commands"])
@@ -231,15 +226,16 @@ class Ranking(commands.Cog):
             return
 
         async with self.flush_lock:
+            try:
+                if await self.global_guard.flush():
+                    self.leaderboard_cache.clear()
+            except Exception as error:
+                self.bot.log(f"Error flushing global XP safeguards\n{error}")
             batches = {
-                "global": self.pending_global,
-                "global_monthly": self.pending_global_monthly,
                 "guild": self.pending_guild,
                 "monthly": self.pending_monthly,
                 "commands": self.pending_commands,
             }
-            self.pending_global = {}
-            self.pending_global_monthly = {}
             self.pending_guild = {}
             self.pending_monthly = {}
             self.pending_commands = {}
@@ -249,22 +245,6 @@ class Ranking(commands.Cog):
 
             try:
                 async with self.bot.utils.cursor() as cur:
-                    if batches["global"]:
-                        await cur.executemany(
-                            "insert into global_msg (user_id, xp) values (%s, %s) "
-                            "on duplicate key update xp = global_msg.xp + values(xp);",
-                            [(user_id, amount)
-                             for user_id, amount in batches["global"].items()]
-                        )
-                        batches["global"] = {}
-                    if batches["global_monthly"]:
-                        await cur.executemany(
-                            "insert into global_monthly (user_id, timeframe, xp) "
-                            "values (%s, %s, %s) "
-                            "on duplicate key update xp = global_monthly.xp + values(xp);",
-                            [(*key, amount) for key, amount in batches["global_monthly"].items()]
-                        )
-                        batches["global_monthly"] = {}
                     if batches["guild"]:
                         await cur.executemany(
                             "insert into msg (guild_id, user_id, xp) values (%s, %s, %s) "
@@ -411,11 +391,6 @@ class Ranking(commands.Cog):
         ]
         for user_id in expired:
             del self.global_cd[user_id]
-        self.active = {
-            user_id: activity
-            for user_id, activity in self.active.items()
-            if activity[1] > now - 7200
-        }
         for guild_id, users in list(self.cd.items()):
             active_users = {
                 user_id: [stamp for stamp in stamps if stamp > now - 3600]
@@ -453,7 +428,6 @@ class Ranking(commands.Cog):
         ping = str(round((monotonic() - before) * 1000)) + "ms"
         self.bot.log.debug(f"Removed {len(expired)} cooldowns in {ping}")
         self.spam_cd = {}
-        self.macro_cd = {}
 
     @tasks.loop(hours=1)
     async def monthly_cleanup_task(self):
@@ -491,6 +465,36 @@ class Ranking(commands.Cog):
             self.bot.log.debug(
                 f"Removed {removed} expired rows from monthly leaderboards"
             )
+        await self.global_guard.cleanup(time())
+
+    @commands.command(description="Check your global XP eligibility and temporary pauses")
+    @commands.cooldown(1, 10, commands.BucketType.user)
+    async def globalxpstatus(self, ctx):
+        state = await self.global_guard.state(ctx.author.id)
+        await self.global_guard.flush()
+        self.leaderboard_cache.clear()
+        if state.blocked_until > time():
+            removed = await self.global_guard.latest_flag(ctx.author.id)
+            await ctx.send(
+                f"Global XP is paused until <t:{int(state.blocked_until)}:F> "
+                f"(<t:{int(state.blocked_until)}:R>).\n"
+                f"Reason: {REASONS.get(state.reason, 'Unusual XP activity')}.\n"
+                f"Recent global XP removed: **{removed:,}**. Server XP and roles are unaffected. "
+                "If this looks mistaken, contact Fate's owner for review."
+            )
+        else:
+            await ctx.send("You can earn global XP. No temporary global XP pause is active.")
+
+    @commands.command(hidden=True)
+    @commands.is_owner()
+    async def globalxpunblock(self, ctx, user_id: int):
+        """Lift a global XP pause and reset repeat penalties after owner review."""
+        await self.global_guard.release(user_id)
+        self.leaderboard_cache.clear()
+        await ctx.send(
+            f"Global XP pause cleared for `{user_id}`; repeat penalties reset. "
+            "Previously removed XP is unchanged."
+        )
 
     def calc_lvl_info(self, xp, config):
         level = 0
@@ -556,24 +560,6 @@ class Ranking(commands.Cog):
                 punish()
                 return
 
-            # anti macro
-            if user_id not in self.macro_cd:
-                self.macro_cd[user_id] = {}
-                self.macro_cd[user_id]["intervals"] = []
-            if "last" not in self.macro_cd[user_id]:
-                self.macro_cd[user_id]["last"] = datetime.now(tz=timezone.utc)
-            else:
-                last = self.macro_cd[user_id]["last"]
-                current = datetime.now(tz=timezone.utc)
-                self.macro_cd[user_id]["last"] = current
-                self.macro_cd[user_id]["intervals"].append((current - last).seconds)
-                intervals = self.macro_cd[user_id]["intervals"]
-                self.macro_cd[user_id]["intervals"] = intervals[-3:]
-                if len(intervals) > 2:
-                    if all(interval == intervals[0] for interval in intervals):
-                        punish()
-                        return
-
             set_time = int(datetime.timestamp(
                 datetime.now(tz=timezone.utc).replace(
                     microsecond=0, second=0, minute=0, hour=0
@@ -583,26 +569,15 @@ class Ranking(commands.Cog):
                 self.global_cd[user_id] = 0
             if self.global_cd[user_id] < current_time:
                 self.global_cd[user_id] = current_time + 10
-
-                if user_id not in self.active:
-                    self.active[user_id] = [current_time, current_time]
-                started_at, latest = self.active[user_id]
-
-                if latest < current_time - 7200:  # At least 2h passed since last msg
-                    del self.active[user_id]
-
-                elif started_at < current_time - 60 * 60 * 12:  # Ignore past 12 hours of activity
-                    return
-
-                else:  # Update the latest msg time
-                    self.active[user_id][1] = current_time
-
-                self.add_pending(self.pending_global, user_id, 1)
-                self.add_pending(
-                    self.pending_global_monthly,
-                    (user_id, set_time),
-                    1
-                )
+                # Ignore webhooks and stale/replayed messages for global XP.
+                # Presence is not evidence of activity; only actual XP events count.
+                age = current_time - msg.created_at.timestamp()
+                if not msg.webhook_id and -5 <= age <= 120:
+                    try:
+                        await self.global_guard.observe(user_id, msg.id, current_time)
+                    except Exception as error:
+                        # No unguarded global awards if state cannot be loaded.
+                        self.bot.log(f"Error checking global XP activity\n{error}")
 
             # per-server leveling
             if conf["min_xp_per_msg"] >= conf["max_xp_per_msg"]:

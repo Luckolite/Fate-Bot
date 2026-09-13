@@ -287,7 +287,7 @@ class Utility(commands.Cog):
             if isinstance(tmp, discord.Guild):
                 guild = tmp
 
-        if guild.id and guild.name:
+        if guild is not None and guild.id and guild.name:
             info["guild_id"] = guild.id
             info["guild_name"] = self.bot.encode(guild.name)
 
@@ -400,6 +400,10 @@ class Utility(commands.Cog):
                     # failure and keep processing any other links.
                     if error.args != ("channel",):
                         raise
+                    continue
+
+                # Friend and group DM invites do not belong to a guild.
+                if invite.guild is None:
                     continue
 
                 guild = self.bot.get_guild(invite.guild.id)
@@ -638,6 +642,11 @@ class Utility(commands.Cog):
                 e.set_author(name=f"Server Invite Splash", icon_url=guild.icon.url if guild.icon else None)
                 e.set_image(url=guild.splash.url)
                 pages.append(e)
+        if not pages:
+            return await ctx.send(
+                "Neither you nor this server has a banner" if guild
+                else "You don't have a banner"
+            )
         if len(pages) == 1:
             return await ctx.send(embed=pages[0])
         await Menu(ctx, pages)

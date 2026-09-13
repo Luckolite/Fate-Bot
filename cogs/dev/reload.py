@@ -1,6 +1,7 @@
 """Owner-only extension lifecycle commands."""
 
 import asyncio
+import importlib
 import io
 import traceback
 from dataclasses import dataclass
@@ -51,8 +52,17 @@ class Reload(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self._operation_lock = asyncio.Lock()
+        if not hasattr(bot, "_extension_operation_lock"):
+            bot._extension_operation_lock = asyncio.Lock()
+        self._operation_lock = bot._extension_operation_lock
         self._extensions = self._build_extension_index()
+        if hasattr(bot, "attrs"):
+            # This helper only owns a bot reference and a read-through settings
+            # cache, so it can safely follow moderation code updates in place.
+            attributes = importlib.import_module("botutils.attributes")
+            attributes = importlib.reload(attributes)
+            bot.attrs = attributes.Attributes(bot)
+            bot.utils.attrs = bot.attrs
 
     @commands.command(
         name="logout",
@@ -168,6 +178,9 @@ class Reload(commands.Cog):
             seen.add(extension)
             started = monotonic()
             action = "reloaded"
+            preserve_errors = extension == "cogs.core.error_handler"
+            if preserve_errors:
+                self.bot._preserve_error_handler_on_reload = True
             try:
                 try:
                     await self.bot.reload_extension(extension)
@@ -185,8 +198,40 @@ class Reload(commands.Cog):
                         elapsed_ms=round((monotonic() - started) * 1000),
                     )
                 )
+            finally:
+                if preserve_errors:
+                    self.bot._preserve_error_handler_on_reload = False
 
         return results
+
+    async def reload_from_control(self) -> dict:
+        """Reload configured cogs without a Discord message or process restart."""
+        async with self._operation_lock:
+            results = await self._reload_extensions(self._configured_extensions())
+            failures = [result for result in results if not result.succeeded]
+            successes = len(results) - len(failures)
+            warnings = []
+            if successes and not self._sync_cooldown_remaining():
+                self.bot._application_command_sync_at = monotonic()
+                if await self.bot.sync_application_commands(force=True) is None:
+                    warnings.append("Application command publishing failed; see the console.")
+            try:
+                self._refresh_website()
+            except Exception:
+                warnings.append("The website could not refresh automatically.")
+            return {
+                "reloaded": successes,
+                "failed": len(failures),
+                "message": (
+                    f"Reloaded {successes} of {len(results)} modules."
+                    + (f" {len(failures)} failed." if failures else "")
+                ),
+                "errors": [
+                    {"module": result.extension or result.requested, "error": (result.error or "Unknown error")[:500]}
+                    for result in failures
+                ][:64],
+                "warnings": warnings,
+            }
 
     @staticmethod
     def _preview(lines: list[str], *, limit: int = 1024) -> str:
