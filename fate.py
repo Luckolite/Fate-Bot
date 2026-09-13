@@ -54,6 +54,7 @@ from botutils.instance_handoff import InstanceHandoff
 from botutils.local_databases import ensure_local_databases, mysql_settings
 from botutils.localization import LocalizationManager
 from botutils.log_paths import DISCORD_LOG_PATH, ensure_logging_directory
+from botutils.module_reload import ModuleReloadControl
 from botutils.resources import Cache as LegacyResourceCache
 from botutils.resources import load_builtin_cache_snapshots
 from botutils.slash_commands import install_legacy_slash_commands
@@ -299,6 +300,9 @@ class Fate(commands.AutoShardedBot):
         self._status_server_control_task = None
         self.status_server_restart_path = (
             repository_root / "data" / f"fate-status-server-{self.dashboard_port}.restart"
+        )
+        self.module_reload_control = ModuleReloadControl(
+            repository_root / "data" / f"fate-modules-{self.dashboard_port}.json"
         )
         self._tree_synced = False
         self._application_command_sync_at = 0.0
@@ -622,9 +626,14 @@ class Fate(commands.AutoShardedBot):
             self.log.info("Fate status server restarted")
 
     async def watch_status_server_controls(self) -> None:
-        """Consume authenticated restart requests written locally by FateControl."""
+        """Consume authenticated local module and HTTP-listener controls."""
         while not self.is_closed():
             await asyncio.sleep(0.25)
+            try:
+                await self.module_reload_control.execute_pending(self)
+            except (OSError, ValueError) as error:
+                self.log.error(f"Couldn't read module reload controls: {error}")
+                await asyncio.sleep(5)
             request_path = self.status_server_restart_path
             try:
                 requested = request_path.is_file() and not request_path.is_symlink()
@@ -749,7 +758,8 @@ class Fate(commands.AutoShardedBot):
                 "latency_ms": latency_ms,
                 "uptime_seconds": uptime,
                 "commands_this_month": commands_this_month,
-                "capabilities": {"status_server_restart": True},
+                "capabilities": {"status_server_restart": True, "module_reload": True},
+                "runtime_id": self.module_reload_control.runtime_id,
                 "resources": {"memory": memory_status},
                 "health": {
                     "summary": health_summary,

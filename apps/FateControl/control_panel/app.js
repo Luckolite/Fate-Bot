@@ -107,6 +107,7 @@ const state = {
   backupsLoadedAt: 0,
   backupDirty: false,
   processActionPending: false,
+  moduleReloadPending: false,
   statusServerActionPending: false,
   hostActionPending: false,
   folderStack: [{ id: "root", name: "Drive" }],
@@ -414,6 +415,7 @@ function renderStatus(payload) {
     ? owned ? `Running under FateControl${process.pid ? ` · PID ${process.pid}` : ""}.` : "Running externally. Restart transfers supervision to FateControl."
     : "Stopped and ready to start.";
   updateActionButtons();
+  renderModuleReload(payload.module_reload);
   byId("overview-updated").textContent = payload.updated_at ? `Updated ${new Date(payload.updated_at).toLocaleTimeString()}` : "Updated now";
   setConnection("Connected", "online");
   const hostLoadCard = byId("metric-grid")?.querySelector('[data-metric="host_load"]');
@@ -442,12 +444,48 @@ function updateActionButtons() {
   const process = state.status?.bot || {};
   const running = Boolean(process.process_running);
   const owned = Boolean(process.owned);
-  const processBusy = state.processActionPending;
+  const reloading = state.moduleReloadPending || ["pending", "running"].includes(state.status?.module_reload?.state);
+  const processBusy = state.processActionPending || reloading;
   byId("start-button").disabled = processBusy || running;
   byId("stop-button").disabled = processBusy || !running || !owned;
   byId("restart-button").disabled = processBusy || !running;
-  byId("restart-status-server-button").disabled = state.statusServerActionPending || !running;
-  byId("reboot-button").disabled = state.hostActionPending || !state.status?.system?.capabilities?.reboot;
+  const reloadButton = byId("reload-modules-button");
+  reloadButton.disabled = processBusy || !state.status?.online || !state.status?.discord?.capabilities?.module_reload;
+  reloadButton.textContent = reloading ? "Reloading modules…" : "Reload modules";
+  byId("restart-status-server-button").disabled = state.statusServerActionPending || reloading || !running;
+  byId("reboot-button").disabled = state.hostActionPending || reloading || !state.status?.system?.capabilities?.reboot;
+}
+
+function renderModuleReload(job) {
+  byId("module-reload-status").textContent = job?.message
+    || "Reload modules without disconnecting Discord. Core runtime changes still need Restart.";
+  const details = byId("module-reload-details");
+  details.replaceChildren();
+  for (const item of [...(job?.errors || []).map((error) => `${error.module}: ${error.error}`), ...(job?.warnings || [])]) {
+    const row = document.createElement("li");
+    row.textContent = item;
+    details.append(row);
+  }
+  details.hidden = !details.childElementCount;
+}
+
+async function reloadModules() {
+  if (byId("reload-modules-button").disabled) return;
+  state.moduleReloadPending = true;
+  updateActionButtons();
+  try {
+    const result = await request("/api/v1/bot/action", {
+      method: "POST", body: JSON.stringify({ action: "reload_modules" }),
+    });
+    state.status.module_reload = result.module_reload;
+    renderModuleReload(result.module_reload);
+    showToast(result.message);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    state.moduleReloadPending = false;
+    updateActionButtons();
+  }
 }
 
 async function processAction(action) {
@@ -2445,6 +2483,7 @@ function bindEvents() {
   byId("config-form").addEventListener("submit", (event) => event.preventDefault());
   byId("save-config").addEventListener("click", () => saveConfig(false));
   byId("save-restart-config").addEventListener("click", () => saveConfig(true));
+  byId("reload-modules-button").addEventListener("click", reloadModules);
   byId("reload-config").addEventListener("click", loadConfig);
   byId("discard-config").addEventListener("click", discardConfigEdits);
   byId("config-search").addEventListener("input", () => {

@@ -47,6 +47,7 @@ from botutils.google_drive import (
     GoogleDriveError,
     GoogleDriveTokenStore,
 )
+from botutils.module_reload import ModuleReloadControl
 from botutils.telemetry import (
     MAX_CHART_POINTS,
     SUPPORTED_METRICS,
@@ -893,6 +894,7 @@ class FateController:
         self.control_launch_tickets: dict[str, float] = {}
         self.monitor_task: asyncio.Task | None = None
         self.lock = asyncio.Lock()
+        self.module_reload_lock = asyncio.Lock()
         self.started = monotonic()
         self.restart_count = 0
         self.last_exit_code: int | None = None
@@ -1184,6 +1186,22 @@ class FateController:
 
     def status_server_restart_path(self) -> Path:
         return REPOSITORY_ROOT / "data" / f"fate-status-server-{self.bot_port}.restart"
+
+    def module_reload_control(self) -> ModuleReloadControl:
+        return ModuleReloadControl(REPOSITORY_ROOT / "data" / f"fate-modules-{self.bot_port}.json")
+
+    async def reload_modules(self) -> dict[str, Any]:
+        async with self.module_reload_lock:
+            status = await self.bot_status()
+            if not status or not status.get("online"):
+                raise web.HTTPConflict(text=json.dumps({"error": "Fate must be online to reload modules."}), content_type="application/json")
+            if not status.get("capabilities", {}).get("module_reload") or not status.get("runtime_id"):
+                raise web.HTTPConflict(text=json.dumps({"error": "Restart Fate once to enable module reloads."}), content_type="application/json")
+            try:
+                job = await asyncio.to_thread(self.module_reload_control().queue, status["runtime_id"])
+            except (OSError, ValueError) as error:
+                raise web.HTTPServiceUnavailable(text=json.dumps({"error": f"Could not queue module reload: {error}"}), content_type="application/json") from error
+            return {"accepted": True, "module_reload": job, "message": job["message"]}
 
     async def restart_status_server(self) -> dict[str, Any]:
         status = await self.bot_status()
@@ -2027,6 +2045,12 @@ class FateController:
         }
         if include_private:
             snapshot["system"] = system
+            try:
+                snapshot["module_reload"] = await asyncio.to_thread(
+                    self.module_reload_control().read, (discord_status or {}).get("runtime_id")
+                )
+            except (OSError, ValueError):
+                snapshot["module_reload"] = {"state": "failed", "message": "Could not read module reload status."}
         else:
             snapshot["system"] = {
                 "capabilities": {"reboot": False},
@@ -2155,9 +2179,11 @@ class FateController:
     async def bot_action(self, request: web.Request) -> web.Response:
         self.require_auth(request)
         payload = await read_json_object(request)
+        if payload.get("action") == "reload_modules":
+            return web.json_response(await self.reload_modules(), status=202)
         if payload.get("action") != "restart":
             raise web.HTTPBadRequest(
-                text=json.dumps({"error": "action must be restart."}),
+                text=json.dumps({"error": "action must be restart or reload_modules."}),
                 content_type="application/json",
             )
         result = await self.restart_bot()

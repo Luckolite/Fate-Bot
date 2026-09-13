@@ -44,10 +44,13 @@
             <button class="button primary" id="start-button" type="button">Start</button>
             <button class="button" id="stop-button" type="button">Stop</button>
             <button class="button" id="restart-button" type="button">Restart</button>
+            <button class="button" id="reload-modules-button" type="button" disabled>Reload modules</button>
             <button class="button" id="restart-status-server-button" type="button">Restart status server</button>
             <button class="button danger" id="reboot-button" type="button">Reboot host</button>
           </div>
         </article>
+        <p class="muted" id="module-reload-status" role="status" aria-live="polite">Reload modules without disconnecting Discord. Core runtime changes still need Restart.</p>
+        <ul id="module-reload-details" hidden></ul>
       </section>
 
       <section class="panel-section" id="section-metrics" aria-labelledby="metrics-title">
@@ -230,6 +233,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/control/assets/app.js?v=20260902-21" defer></script>
+  <script src="/control/assets/app.js?v=20260909-22" defer></script>
 </body>
 </html>

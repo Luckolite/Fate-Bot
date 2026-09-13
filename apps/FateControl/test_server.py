@@ -665,7 +665,7 @@ class FateControlApiTests(unittest.IsolatedAsyncioTestCase):
         medium = styles.split("@media (max-width: 1100px)", 1)[1].split("@media (max-width: 760px)", 1)[0]
         self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", medium)
         self.assertIn("styles.css?v=20260902-17", page)
-        self.assertIn("app.js?v=20260902-21", page)
+        self.assertIn("app.js?v=20260909-22", page)
 
     def test_shared_metrics_include_requested_activity_counters(self):
         script = (CONTROL_PANEL_ROOT / "app.js").read_text(encoding="utf-8")
@@ -687,7 +687,7 @@ class FateControlApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('return "Discord rate limits"', script)
         self.assertIn("top_discord_routes", script)
         self.assertIn("Affected Discord routes", script)
-        self.assertIn("app.js?v=20260902-21", page)
+        self.assertIn("app.js?v=20260909-22", page)
 
     def test_control_clients_coalesce_refreshes_and_accept_copied_panel_urls(self):
         script = (CONTROL_PANEL_ROOT / "app.js").read_text(encoding="utf-8")

@@ -2949,7 +2949,10 @@ class Logger(commands.Cog):
                     guild_id, log.type, snapshot
                 )
                 if alert:
-                    self.bot.log.critical(alert)
+                    if snapshot["worker_running"]:
+                        self.bot.log.warning(alert)
+                    else:
+                        self.bot.log.critical(alert)
 
     async def save_data(self) -> None:
         """ Saves local variables """

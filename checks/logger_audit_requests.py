@@ -115,7 +115,7 @@ class GlobalRequestTests(unittest.IsolatedAsyncioTestCase):
         async def sleep(delay):
             now[0] += delay
         async def request():
-            await tracker._before_request_headers(None, None, self.params())
+            await tracker._before_request_start(None, None, self.params())
             sends.append(now[0])
         with patch('botutils.discord_rate_limits.monotonic', side_effect=lambda: now[0]), patch(
             'botutils.discord_rate_limits.asyncio.sleep', side_effect=sleep
@@ -128,7 +128,7 @@ class GlobalRequestTests(unittest.IsolatedAsyncioTestCase):
         tracker = DiscordRateLimitTracker(None)
         for params in (self.params(auth=False), self.params('https://example.com/api/a'),
                        self.params('https://discord.com/api/v10/interactions/123/token/callback')):
-            await tracker._before_request_headers(None, None, params)
+            await tracker._before_request_start(None, None, params)
         self.assertEqual(tracker._next_request_at, 0)
 
     async def test_global_retry_after_is_honored_even_if_metrics_fail(self):
@@ -146,7 +146,7 @@ class GlobalRequestTests(unittest.IsolatedAsyncioTestCase):
             'botutils.discord_rate_limits.asyncio.sleep', side_effect=sleep
         ):
             await tracker._on_request_end(None, None, params)
-            await tracker._before_request_headers(None, None, params)
+            await tracker._before_request_start(None, None, params)
         self.assertEqual(waits, [2.0])
 
 

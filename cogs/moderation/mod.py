@@ -29,7 +29,6 @@ from discord.ext.commands import Greedy
 from apps.Dashboard.dashboard.validation import MAX_PURGE_LIMIT
 from botutils import colors, get_prefix, get_time, split, CancelButton, format_date, GetConfirmation, extract_time, \
     emojis, s
-from checks.exceptions import IgnoredExit
 from fate import Fate
 from .case_manager import CaseManager
 from .logger import Logger
@@ -120,6 +119,45 @@ def purge_confirmation_enabled(settings: dict) -> bool:
     return value if type(value) is bool else True
 
 
+async def delete_purge_messages(channel, messages):
+    """Delete only the selected snapshot; the HTTP tracker paces old deletes."""
+    selected = list({message.id: message for message in messages}.values())
+    deleted = []
+
+    async def delete_single(message):
+        try:
+            await message.delete()
+        except NotFound as error:
+            if error.code != 10008:  # Only an already-deleted message is harmless.
+                raise
+        else:
+            deleted.append(message)
+
+    for offset in range(0, len(selected), 100):
+        chunk = selected[offset:offset + 100]
+        # Recheck age after waits and leave a margin at the bulk-delete boundary.
+        cutoff = discord.utils.time_snowflake(
+            discord.utils.utcnow() - timedelta(days=14) + timedelta(minutes=1)
+        )
+        recent = [message for message in chunk if message.id > cutoff]
+        old = [message for message in chunk if message.id <= cutoff]
+        if len(recent) > 1:
+            try:
+                await channel.delete_messages(recent)
+            except HTTPException as error:
+                if error.code != 50034:  # Age changed while the request was waiting.
+                    raise
+                for message in recent:
+                    await delete_single(message)
+            else:
+                deleted.extend(recent)
+        elif recent:
+            await delete_single(recent[0])
+        for message in old:
+            await delete_single(message)
+    return deleted
+
+
 class PurgeConfirmation(GetConfirmation):
     """Purge confirmation with a persistent server-level opt-out."""
 
@@ -188,6 +226,7 @@ class Moderation(commands.Cog):
         self.path: str = "./data/userdata/moderation.json"
         self.config = {}
         self.tasks = {}
+        self._purge_tasks = set()
         if path.isfile(self.path):
             with open(self.path, "r") as f:
                 self.config = json.load(f)  # type: dict
@@ -223,12 +262,14 @@ class Moderation(commands.Cog):
         pending.update(
             task for task in self.timers.tasks.values() if not task.done()
         )
+        pending.update(task for task in self._purge_tasks if not task.done())
         for task in pending:
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self.tasks.clear()
         self.timers.tasks.clear()
+        self._purge_tasks.clear()
 
     @property
     def template(self):
@@ -485,12 +526,10 @@ class Moderation(commands.Cog):
             amount_to_purge = purge_limit
         else:
             amount_to_purge = int(amount_to_purge)
-        ctx.counter = 0
         if amount_to_purge > purge_limit:
             return await ctx.send(
                 f"This server has a purge limit of {purge_limit:,} messages"
             )
-        check = None
         special_check = None
         msgs = []
         if len(args) > 1:
@@ -516,14 +555,6 @@ class Moderation(commands.Cog):
             old_amount = int(amount_to_purge)
             amount_to_purge = 250
 
-            def check(msg):
-                if ctx.counter == old_amount:
-                    return False
-                if special_check(msg):
-                    ctx.counter += 1
-                    return True
-                return False
-
         reaction_purge = "reaction" in args or "reactions" in args
         target_amount = old_amount if len(args) > 1 else None
         preview = []
@@ -543,8 +574,8 @@ class Moderation(commands.Cog):
             if reaction_purge:
                 if not msg.reactions:
                     continue
-            elif special_check and not special_check(msg):
-                    continue
+            elif not msg.type.is_deletable() or (special_check and not special_check(msg)):
+                continue
             preview.append(msg)
             if target_amount and len(preview) == target_amount:
                 break
@@ -581,46 +612,23 @@ class Moderation(commands.Cog):
                     await msg.clear_reactions()
                     msgs.append(msg)
         else:
-            async def purge_task(coro):
-                try:
-                    messages = await coro
-                except discord.errors.HTTPException:  # Msgs too old
-                    try:
-                        messages = []
-                        async for msg in ctx.channel.history(before=ctx.message, limit=amount_to_purge):
-                            with suppress(Forbidden, NotFound, asyncio.TimeoutError):
-                                await msg.delete()
-                                messages.append(msg)
-                    except discord.errors.NotFound:
-                        raise IgnoredExit
-                return messages
-
-            kwargs = {}
-            if check:
-                kwargs["check"] = check
-            if ctx.message.reference:
-                coro = ctx.channel.purge(
-                    limit=amount_to_purge,
-                    before=ctx.message,
-                    after=history_kwargs["after"],
-                    **kwargs
-                )
-            else:
-                coro = ctx.channel.purge(
-                    limit=amount_to_purge,
-                    before=ctx.message,
-                    after=after,
-                    **kwargs
-                )
-
-            task = asyncio.create_task(purge_task(coro))
+            task = asyncio.create_task(delete_purge_messages(ctx.channel, preview))
+            self._purge_tasks.add(task)
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=5)
-            except asyncio.TimeoutError:
-                await ctx.send(
-                    "It seems this purge is gonna take awhile..", delete_after=20
-                )
-            msgs = await task
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=5)
+                except asyncio.TimeoutError:
+                    with suppress(HTTPException):
+                        await ctx.send(
+                            "Still clearing messages. Older messages take longer to delete.",
+                            delete_after=20,
+                        )
+                msgs = await task
+            finally:
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+                self._purge_tasks.discard(task)
         e = discord.Embed(
             description=f"♻ Cleared {len(msgs)} message{'s' if len(msgs) > 1 else ''}"
         )
@@ -2094,11 +2102,21 @@ class TimerView(ui.View):
             if duration == 0:
                 return await interaction.response.edit_message(view=self.home_view)
 
-            mod: Moderation = self.bot.cogs["Moderation"]  # type: ignore
+            mod = self.bot.cogs.get("Moderation")
+            if mod is None:
+                return await interaction.response.send_message(
+                    "Moderation is reloading. Please try again in a moment.",
+                    ephemeral=True,
+                )
             guild_id = str(self.ctx.guild.id)
 
             user = self.home_view.user
             mute_role = await self.bot.attrs.get_mute_role(self.ctx.guild, upsert=True)
+            if mute_role is None:
+                return await interaction.response.send_message(
+                    "I couldn't find or create a mute role. Please try again.",
+                    ephemeral=True,
+                )
             await user.add_roles(mute_role)
 
             # Update the mute if one is already running

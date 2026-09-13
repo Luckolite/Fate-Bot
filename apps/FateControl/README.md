@@ -46,6 +46,12 @@ and the bounded console. New server metrics and configuration keys appear from
 FateControl's responses rather than requiring separate Android and Windows UI
 implementations. Large Discord IDs are transported as protected decimal strings
 and restored to integers on save so browser number handling cannot round them.
+The Overview page's **Reload modules** button reloads configured bot modules and
+refreshes the website while Discord remains connected. It reports completion and
+individual module failures, and repeated clicks share the same reload operation.
+The shared panel updates both Windows and Android without rebuilding either app.
+Core runtime and shared-library changes still require **Restart**. Installing the
+reload control hook itself requires one initial restart.
 The panel coalesces status and console refreshes, loads heavy sections only when
 opened, and revalidates preloaded data before showing it. Backup saves carry the
 loaded config revision so two clients cannot silently overwrite each other.
