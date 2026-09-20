@@ -19,9 +19,11 @@ from termcolor import cprint
 
 
 class Logging:
+    max_queued_logs = 1_000
+
     def __init__(self, bot):
         self.bot = bot
-        self.queue = deque()
+        self.queue = deque(maxlen=self.max_queued_logs)
         self.handle_queue.start()
 
     def __call__(self, *args, **kwargs):

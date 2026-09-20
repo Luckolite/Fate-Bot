@@ -116,6 +116,25 @@ class AntiRaid(commands.Cog):
         self.background_tasks.clear()
         self.unlock_tasks.clear()
 
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild: discord.Guild) -> None:
+        guild_id = guild.id
+        self.join_windows.pop(guild_id, None)
+        self.recent_incidents.pop(guild_id, None)
+        self.stats.pop(guild_id, None)
+        lock = self.guild_locks.get(guild_id)
+        if lock is not None and not lock.locked():
+            self.guild_locks.pop(guild_id, None)
+        task = self.unlock_tasks.pop(guild_id, None)
+        if task and not task.done():
+            task.cancel()
+        for key in list(self.action_windows):
+            if key[0] == guild_id:
+                self.action_windows.pop(key, None)
+        for key in list(self.incident_cooldowns):
+            if key[0] == guild_id:
+                self.incident_cooldowns.pop(key, None)
+
     def get_config(
         self, guild_id: int, *, create: bool = False
     ) -> Optional[dict[str, Any]]:

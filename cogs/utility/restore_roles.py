@@ -43,6 +43,7 @@ class RestoreRoles(commands.Cog):
     async def disable_module(self, guild_id: str):
         """ Disables the module and resets guild data """
         self.guilds.pop(self.guilds.index(guild_id))
+        self.cache.pop(guild_id, None)
         if guild_id in self.allow_perms:
             self.allow_perms.pop(self.allow_perms.index(guild_id))
         await self.save_data()
@@ -112,14 +113,21 @@ class RestoreRoles(commands.Cog):
         user_id = str(member.id)
         if guild_id in self.cache and guild_id in self.guilds:
             if user_id in self.cache[guild_id]:
+                role_ids = self.cache[guild_id].pop(user_id)
+                if not self.cache[guild_id]:
+                    self.cache.pop(guild_id, None)
                 roles = []
                 with suppress(discord.errors.NotFound, discord.errors.Forbidden, AttributeError):
-                    for role_id in self.cache[guild_id][user_id]:
+                    for role_id in role_ids:
                         role = member.guild.get_role(role_id)
                         if isinstance(role, discord.Role):
                             if role.position < member.guild.me.top_role.position:
                                 roles.append(role)
                     await member.add_roles(*roles, reason=".Restore-Roles")
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        self.cache.pop(str(guild.id), None)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):

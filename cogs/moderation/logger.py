@@ -22,7 +22,7 @@ from typing import *
 from uuid import uuid4
 
 from PIL import Image
-from aiohttp.client_exceptions import ClientOSError
+from aiohttp.client_exceptions import ClientOSError, ClientPayloadError
 from discord import (
     Object,
     Color,
@@ -113,6 +113,22 @@ audit_rest_tasks: Dict[int, asyncio.Task] = {}
 audit_rest_cache: Dict[int, tuple] = {}
 AUDIT_REST_CACHE_SECONDS = 2.0
 MAX_AUDIT_REST_CACHE_GUILDS = 4096
+
+
+async def fetch_guild_invites(guild: Guild) -> list:
+    """Fetch invites, retrying once when Discord truncates the response body."""
+    for attempt in range(2):
+        try:
+            return await guild.invites()
+        except ClientPayloadError:
+            if attempt == 0:
+                await asyncio.sleep(0)
+                continue
+        except (Forbidden, HTTPException):
+            pass
+        return []
+
+    return []
 
 
 async def shared_audit_entries(guild: Guild, cutoff: datetime) -> tuple:
@@ -3394,8 +3410,8 @@ class Logger(commands.Cog):
             self.invites.setdefault(guild_id, {})
             async with semaphore:
                 try:
-                    invites = await asyncio.wait_for(guild.invites(), timeout=10)
-                except (Forbidden, HTTPException, asyncio.TimeoutError):
+                    invites = await asyncio.wait_for(fetch_guild_invites(guild), timeout=10)
+                except asyncio.TimeoutError:
                     return
             for invite in invites:
                 self.invites[guild_id][invite.url] = invite.uses
@@ -6357,10 +6373,7 @@ class Logger(commands.Cog):
 
             used_invite = None
             if member.guild.me.guild_permissions.manage_guild:
-                try:
-                    invites = await member.guild.invites()
-                except (Forbidden, HTTPException):
-                    invites = []
+                invites = await fetch_guild_invites(member.guild)
                 if guild_id not in self.invites:
                     self.invites[guild_id] = {}
                 for current_invite in invites:

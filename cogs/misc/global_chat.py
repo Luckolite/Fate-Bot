@@ -11,6 +11,7 @@ A cog to add functionality for a channel interconnected between multiple others
 import asyncio
 import json
 import traceback
+from collections import deque
 from contextlib import suppress
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -92,15 +93,18 @@ class GlobalChat(commands.Cog):
     last_id : Optional[int]
     config : Dict[str, List[int]]
     """
+    max_active_polls = 100
+    poll_retention_seconds = 24 * 60 * 60
+
     def __init__(self, bot: Fate):
         self.bot = bot
         self.polls = {}
         self.cache = {}
-        self.messages = []
-        self.msg_cache = []
-        self.msg_chunks = []
+        self.active_channel_ids = set()
+        self.messages = deque(maxlen=20)
         self.names = {}
         self.name_expiry_tasks = {}
+        self.poll_expiry_tasks = {}
         self.cache_task = self.bot.loop.create_task(self.cache_channels())
         self.handle_queue.start()
         self._queue = []
@@ -124,13 +128,46 @@ class GlobalChat(commands.Cog):
 
     async def cog_unload(self):
         self.handle_queue.cancel()
-        pending = [self.cache_task, *self.name_expiry_tasks.values()]
+        pending = [
+            self.cache_task,
+            *self.name_expiry_tasks.values(),
+            *self.poll_expiry_tasks.values(),
+        ]
         for task in pending:
             if not task.done():
                 task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self.name_expiry_tasks.clear()
+        self.poll_expiry_tasks.clear()
+        self.polls.clear()
+
+    async def expire_poll(self, user_id: int, poll: dict) -> None:
+        try:
+            await asyncio.sleep(self.poll_retention_seconds)
+            if self.polls.get(user_id) is poll:
+                self.polls.pop(user_id, None)
+        finally:
+            if self.poll_expiry_tasks.get(user_id) is asyncio.current_task():
+                self.poll_expiry_tasks.pop(user_id, None)
+
+    def start_poll(self, user_id: int) -> dict:
+        previous_task = self.poll_expiry_tasks.pop(user_id, None)
+        if previous_task and not previous_task.done():
+            previous_task.cancel()
+        self.polls.pop(user_id, None)
+        while len(self.polls) >= self.max_active_polls:
+            expired_user_id = next(iter(self.polls))
+            self.polls.pop(expired_user_id, None)
+            expired_task = self.poll_expiry_tasks.pop(expired_user_id, None)
+            if expired_task and not expired_task.done():
+                expired_task.cancel()
+        poll = {"messages": [], "👍": [], "👎": []}
+        self.polls[user_id] = poll
+        self.poll_expiry_tasks[user_id] = self.bot.loop.create_task(
+            self.expire_poll(user_id, poll)
+        )
+        return poll
 
     async def expire_cached_name(self, user_id: int) -> None:
         try:
@@ -142,8 +179,36 @@ class GlobalChat(commands.Cog):
 
     @property
     def queue(self) -> list:
-        self._queue = self._queue[-5:]
+        if len(self._queue) > 5:
+            self._queue = self._queue[-5:]
         return self._queue
+
+    def is_active_channel(self, channel_id: int) -> bool:
+        return channel_id in self.active_channel_ids
+
+    def cache_webhook(self, guild_id: int, webhook) -> None:
+        self.remove_cached_webhook(guild_id)
+        self.cache[guild_id] = webhook
+        channel_id = getattr(getattr(webhook, "channel", None), "id", None)
+        if channel_id is not None:
+            self.active_channel_ids.add(channel_id)
+
+    def remove_cached_webhook(self, guild_id: int) -> None:
+        webhook = self.cache.pop(guild_id, None)
+        channel_id = getattr(getattr(webhook, "channel", None), "id", None)
+        if channel_id is not None:
+            self.active_channel_ids.discard(channel_id)
+
+    async def get_user_status(self, user_id: int) -> Optional[str]:
+        async with self.bot.utils.cursor() as cur:
+            await cur.execute(
+                "select status from global_users where user_id = %s;",
+                (user_id,),
+            )
+            if not cur.rowcount:
+                return None
+            status, *_ = await cur.fetchone()
+            return status
 
     @property
     def blocked(self):
@@ -155,6 +220,8 @@ class GlobalChat(commands.Cog):
     @tasks.loop(seconds=0.21)
     async def handle_queue(self):
         try:
+            if not self._queue:
+                return
             queued_to_send = list(self.queue)
             if len(queued_to_send) > 3 and all(
                 entry[2].guild.id == queued_to_send[0][2].author.id
@@ -172,8 +239,6 @@ class GlobalChat(commands.Cog):
                 if author_msg.stickers:
                     content += f"\n{author_msg.stickers[0].url}"
 
-                self.msg_cache = []
-                chunk = {}
                 tasks = []
                 username = author_msg.author.name
                 if author_msg.author.id in self.names:
@@ -186,8 +251,9 @@ class GlobalChat(commands.Cog):
                         if author_msg.channel.id == webhook.channel.id and author_msg.attachments:
                             continue
                     with suppress(NotFound, Forbidden, AttributeError):
-                        if webhook.channel.permissions_for(webhook.guild.me).manage_messages:
-                            if not webhook.channel.permissions_for(webhook.guild.me).manage_webhooks:
+                        permissions = webhook.channel.permissions_for(webhook.guild.me)
+                        if permissions.manage_messages:
+                            if not permissions.manage_webhooks:
                                 with suppress(Exception):
                                     await webhook.channel.send("I need manage_webhook permissions to show messages from global chat")
                                 continue
@@ -205,10 +271,6 @@ class GlobalChat(commands.Cog):
                 for task in tasks:
                     with suppress(NotFound, Forbidden, AttributeError):
                         await task
-                        msg = task.result()
-                        self.msg_cache.append(msg)
-                        chunk[msg.channel.id] = msg.id
-                self.msg_chunks.append(chunk)
                 with suppress(AttributeError, NotFound, Forbidden):
                     if author_msg.attachments:
                         if author_msg.channel.permissions_for(author_msg.guild.me).add_reactions:
@@ -257,8 +319,7 @@ class GlobalChat(commands.Cog):
                                     "delete from global_chat where guild_id = %s;",
                                     (guild_id,),
                                 )
-                            if guild_id in self.cache:
-                                del self.cache[guild_id]
+                            self.remove_cached_webhook(guild_id)
                             continue
                     try:
                         webhooks = await channel.webhooks()
@@ -270,7 +331,7 @@ class GlobalChat(commands.Cog):
                             webhook = await channel.create_webhook(
                                 name="Global Chat"
                             )
-                        self.cache[guild_id] = webhook
+                        self.cache_webhook(guild_id, webhook)
                     except (NotFound, Forbidden):
                         async with self.bot.utils.cursor() as cur:
                             await cur.execute(
@@ -307,8 +368,7 @@ class GlobalChat(commands.Cog):
                 await cur.execute(
                     "delete from global_activity where guild_id = %s;", (guild_id,)
                 )
-                if guild_id in self.cache:
-                    del self.cache[guild_id]
+                self.remove_cached_webhook(guild_id)
 
         await ctx.send("done")
 
@@ -525,7 +585,8 @@ class GlobalChat(commands.Cog):
                 (ctx.guild.id, ctx.channel.id, ctx.channel.id),
             )
 
-        self.cache[ctx.guild.id] = await ctx.channel.create_webhook(name="Global Chat")
+        webhook = await ctx.channel.create_webhook(name="Global Chat")
+        self.cache_webhook(ctx.guild.id, webhook)
         await ctx.send("Enabled global chat")
 
     @_gc.command(name="disable", description="Disables global chat in this server")
@@ -537,8 +598,7 @@ class GlobalChat(commands.Cog):
             )
             if not cur.rowcount:
                 return await ctx.send("Global chat isn't enabled")
-            if ctx.guild.id in self.cache:
-                del self.cache[ctx.guild.id]
+            self.remove_cached_webhook(ctx.guild.id)
             await cur.execute(
                 "delete from global_chat where guild_id = %s;", (ctx.guild.id,)
             )
@@ -615,8 +675,7 @@ class GlobalChat(commands.Cog):
     @_gc.command(name="poll", description="Creates a poll in global chat")
     @commands.cooldown(1, 120, commands.BucketType.channel)
     async def poll(self, ctx, *, poll):
-        active = [m.channel.id for m in list(self.cache.values()) if m]
-        if ctx.channel.id not in active:
+        if not self.is_active_channel(ctx.channel.id):
             return await ctx.send("Global chat isn't active")
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
@@ -630,18 +689,14 @@ class GlobalChat(commands.Cog):
         e.set_author(name=f"Poll by {ctx.author} 📊", icon_url=ctx.author.display_avatar.url)
         e.description = poll
         e.set_footer(text="👍 0 | 👎 0")
-        self.polls[ctx.author.id] = {
-            "messages": [],
-            "👍": [],
-            "👎": []
-        }
+        poll_data = self.start_poll(ctx.author.id)
         try:
             for guild_id, webhook in list(self.cache.items()):
                 with suppress(NotFound, Forbidden):
                     msg = await webhook.channel.send(embed=e)
                     await msg.add_reaction("👍")
                     await msg.add_reaction("👎")
-                    self.polls[ctx.author.id]["messages"].append(msg)
+                    poll_data["messages"].append(msg)
             self.last_id = None
         except Exception as e:
             await ctx.send(e)
@@ -651,8 +706,7 @@ class GlobalChat(commands.Cog):
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         if not user.bot and reaction.emoji in ["👍", "👎"]:
-            active = [m.channel.id for m in list(self.cache.values()) if m and m.channel]
-            if reaction.message.channel.id in active:
+            if self.is_active_channel(reaction.message.channel.id):
                 for user_id, data in list(self.polls.items()):
                     await asyncio.sleep(0)
                     if any(reaction.message.id == m.id for m in data["messages"] if m):
@@ -682,8 +736,7 @@ class GlobalChat(commands.Cog):
                 return
             if len(msg.content) == 1 and msg.content.upper() != msg.content.lower():
                 return
-            active = [m.channel.id for m in list(self.cache.values()) if m and m.channel]
-            if not msg.author.bot and msg.channel.id in active:
+            if not msg.author.bot and self.is_active_channel(msg.channel.id):
                 await asyncio.sleep(0.21)
                 if msg.author.id in self.ignore:
                     if msg.channel.permissions_for(msg.guild.me).add_reactions:
@@ -722,41 +775,31 @@ class GlobalChat(commands.Cog):
                             "delete from global_chat where guild_id = %s;",
                             (msg.guild.id,),
                         )
-                    del self.cache[msg.guild.id]
+                    self.remove_cached_webhook(msg.guild.id)
                     with suppress(Exception):
                         return await msg.channel.send(
                             "Disabled global chat due to missing permissions"
                         )
 
-                async with self.bot.utils.cursor() as cur:
-                    await cur.execute(
-                        "select status from global_users where user_id = %s;",
-                        (msg.author.id,),
+                status = await self.get_user_status(msg.author.id)
+                if status is None:
+                    return await msg.channel.send(
+                        "You're not verified into using this channel. "
+                        "Run `.gc verify` in a different channel"
                     )
-                    if not cur.rowcount:
-                        return await msg.channel.send("You're not verified into using this channel. Run `.gc verify` in a different channel")
-                    await cur.execute(
-                        "select status from global_users "
-                        "where user_id = %s and status = 'blocked';",
-                        (msg.author.id,),
+                if status == "blocked":
+                    return await msg.channel.send("You're blocked from using global chat")
+                if msg.author.id not in self.names:
+                    user_id = msg.author.id
+                    self.names[user_id] = str(msg.author.name)
+                    task = self.bot.loop.create_task(
+                        self.expire_cached_name(user_id)
                     )
-                    if cur.rowcount:
-                        return await msg.channel.send("You're blocked from using global chat")
-                    await cur.execute(
-                        "select status from global_users "
-                        "where user_id = %s and status = 'moderator';",
-                        (msg.author.id,),
-                    )
-                    if msg.author.id not in self.names:
-                        user_id = msg.author.id
-                        self.names[user_id] = str(msg.author.name)
-                        task = self.bot.loop.create_task(
-                            self.expire_cached_name(user_id)
-                        )
-                        self.name_expiry_tasks[user_id] = task
+                    self.name_expiry_tasks[user_id] = task
 
-                    # Update the last use for this server
-                    used_at = datetime.now()
+                # Update the last use for this server
+                used_at = datetime.now()
+                async with self.bot.utils.cursor() as cur:
                     await cur.execute(
                         "insert into global_activity values (%s, %s) "
                         "on duplicate key update last_used = %s;",
@@ -837,7 +880,10 @@ class GlobalChat(commands.Cog):
                 if "chat" in msg.content:
                     if "died" in msg.content or "dead" in msg.content:
                         return await msg.add_reaction("🤦‍♂️")
-                if msg.content and len(msg.content) > 5 and any(msg.content == old_msg.content for old_msg in self.messages[-5:]):
+                recent_messages = list(self.messages)[-5:]
+                if msg.content and len(msg.content) > 5 and any(
+                    msg.content == old_msg.content for old_msg in recent_messages
+                ):
                     self.ignore.append(msg.author.id)
                     await msg.channel.send(
                         "You've been temporarily muted from global-chat for 15mins for trying to send a duplicate message",
@@ -869,7 +915,7 @@ class GlobalChat(commands.Cog):
                 # if msg.stickers:
                 #     e.set_image(url=msg.stickers[0].url)
                 self._queue.append([(msg.content, files), False, msg])
-                self.messages = [*self.messages[-20:], msg]
+                self.messages.append(msg)
         except:
             print(traceback.format_exc())
 
