@@ -19,6 +19,7 @@ from pymysql.err import IntegrityError, OperationalError
 from botutils.colors import pink, purple
 
 FORAGE_ENERGY_REGEN_SECONDS = 10 * 60
+MAX_PENDING_CLAIM_CHANNELS = 10_000
 FORAGE_LEVEL_XP = (
     0, 60, 180, 400, 750, 1_250, 1_900, 2_800, 4_000, 5_500,
     7_500, 9_800, 12_500, 15_750, 19_500,
@@ -2421,10 +2422,12 @@ class FactionsRewrite(commands.Cog, name="Factions"):
         if not self.ready.is_set() or self.initialization_error or not message.guild or message.author.bot:
             return
         key = (message.guild.id, message.channel.id)
-        self.claim_counter[key] = self.claim_counter.get(key, 0) + 1
-        if self.claim_counter[key] < 5:
+        count = self.claim_counter.pop(key, 0) + 1
+        if count < 5:
+            self.claim_counter[key] = count
+            if len(self.claim_counter) > MAX_PENDING_CLAIM_CHANNELS:
+                self.claim_counter.pop(next(iter(self.claim_counter)))
             return
-        self.claim_counter[key] = 0
         row = await self.repo.one(
             "SELECT f.id FROM faction_claims c JOIN factions f ON f.id = c.faction_id "
             "WHERE c.guild_id = %s AND c.channel_id = %s", key,

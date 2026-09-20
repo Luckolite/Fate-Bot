@@ -175,6 +175,10 @@ class AntiSpam(commands.Cog):
             task.cancel()
         self.background_tasks.clear()
 
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild: discord.Guild) -> None:
+        self.clear_runtime_for_guild(guild.id)
+
     def _stats(self, guild_id: int) -> dict[str, Any]:
         if guild_id not in self.stats:
             self.stats[guild_id] = {

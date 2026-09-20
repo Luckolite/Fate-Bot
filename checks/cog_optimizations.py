@@ -5,13 +5,29 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from botutils import emojis
+from cogs.core.cc import CustomCommands
 from cogs.fun.factions import Factions
+from cogs.misc.global_chat import GlobalChat
 from cogs.moderation.chat_filter import ChatFilter, safe_regex_query
 from cogs.moderation.logger import chain
+from cogs.utility.inv_manager import InviteManager
 from cogs.utility.self_roles import RoleView
 
 
 class CogOptimizationChecks(unittest.TestCase):
+    def test_custom_command_indexes_are_instance_local_sets(self):
+        bot = SimpleNamespace()
+        with patch("discord.ext.tasks.Loop.start"):
+            first = CustomCommands(bot)
+            second = CustomCommands(bot)
+
+        first.guilds.add(123)
+        first.cache[123] = {"hello": ["world", time.time()]}
+
+        self.assertIsInstance(first.guilds, set)
+        self.assertEqual(second.guilds, set())
+        self.assertEqual(second.cache, {})
+
     def test_logger_chain_preserves_tree_formatting(self):
         self.assertEqual(
             chain(["root\nbranch", "leaf"]),
@@ -134,6 +150,92 @@ class CogOptimizationChecks(unittest.TestCase):
         member.add_roles.assert_awaited_once_with(selected, atomic=False)
         member.remove_roles.assert_awaited_once_with(removed, atomic=False)
         self.assertEqual(telemetry.increment.call_count, 2)
+
+
+class AsyncCursor:
+    def __init__(self, row=None):
+        self.row = row
+        self.rowcount = int(row is not None)
+        self.execute = AsyncMock()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return False
+
+    async def fetchone(self):
+        return self.row
+
+
+class AsyncIndex(dict):
+    def __init__(self, data):
+        super().__init__(data)
+        self.flush = AsyncMock()
+
+
+class AsyncOptimizationChecks(unittest.IsolatedAsyncioTestCase):
+    async def test_global_chat_status_uses_one_query(self):
+        cursor = AsyncCursor(("verified",))
+        cog = object.__new__(GlobalChat)
+        cog.bot = SimpleNamespace(
+            utils=SimpleNamespace(cursor=lambda: cursor),
+        )
+
+        self.assertEqual(await cog.get_user_status(42), "verified")
+        cursor.execute.assert_awaited_once_with(
+            "select status from global_users where user_id = %s;",
+            (42,),
+        )
+
+    async def test_idle_global_chat_queue_returns_without_scanning_cache(self):
+        cog = object.__new__(GlobalChat)
+        cog._queue = []
+
+        await GlobalChat.handle_queue.coro(cog)
+
+    async def test_global_chat_channel_index_tracks_webhook_cache(self):
+        cog = object.__new__(GlobalChat)
+        cog.cache = {}
+        cog.active_channel_ids = set()
+        webhook = SimpleNamespace(channel=SimpleNamespace(id=55))
+
+        cog.cache_webhook(1, webhook)
+        self.assertTrue(cog.is_active_channel(55))
+
+        cog.remove_cached_webhook(1)
+        self.assertFalse(cog.is_active_channel(55))
+
+    async def test_invite_resync_skips_flush_when_state_is_unchanged(self):
+        invite = SimpleNamespace(code="abc", uses=2)
+        index = AsyncIndex(
+            {1: {"abc": {"joins": [], "leaves": [], "uses": 2}}}
+        )
+        cog = object.__new__(InviteManager)
+        cog.index = index
+        cog.suppressed = ()
+        guild = SimpleNamespace(
+            id=1,
+            invites=AsyncMock(return_value=[invite]),
+            get_member=lambda _user_id: None,
+        )
+
+        await cog.re_sync(guild)
+
+        index.flush.assert_not_awaited()
+
+    async def test_invite_remove_flushes_only_when_a_record_changes(self):
+        index = AsyncIndex(
+            {1: {"abc": {"joins": [], "leaves": [], "uses": 2}}}
+        )
+        cog = object.__new__(InviteManager)
+        cog.bot = SimpleNamespace(user=SimpleNamespace(id=999))
+        cog.index = index
+        member = SimpleNamespace(id=42, guild=SimpleNamespace(id=1))
+
+        await cog.on_member_remove(member)
+
+        index.flush.assert_not_awaited()
 
 
 if __name__ == "__main__":

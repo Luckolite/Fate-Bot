@@ -83,22 +83,25 @@ class InviteManager(commands.Cog):
             invites = await guild.invites()
         except self.suppressed:
             raise IgnoredExit
+        changed = False
         for invite in invites:
-            await asyncio.sleep(0)
             uses = invite.uses or 0
             if invite.code in self.index[guild.id]:
                 if uses != self.index[guild.id][invite.code]["uses"]:
                     self.index[guild.id][invite.code]["uses"] = uses
+                    changed = True
             else:
                 self.index[guild.id][invite.code] = self.invite_to_dict(invite)
+                changed = True
         for code, data in list(self.index[guild.id].items()):
             for user_id in list(data["joins"]):
-                await asyncio.sleep(0)
                 if not guild.get_member(user_id):
                     if user_id not in self.index[guild.id][code]["leaves"]:
                         self.index[guild.id][code]["leaves"].append(user_id)
                     self.index[guild.id][code]["joins"].remove(user_id)
-        await self.index.flush()
+                    changed = True
+        if changed:
+            await self.index.flush()
 
     async def disable(self, guild):
         if isinstance(guild, discord.Guild):
@@ -130,6 +133,7 @@ class InviteManager(commands.Cog):
         if not member.guild or member.guild.id not in self.index:
             return
         guild = member.guild
+        changed = False
         with suppress(*self.suppressed):
             invites = await guild.invites()
             discrepancies = []
@@ -137,6 +141,7 @@ class InviteManager(commands.Cog):
                 uses = invite.uses or 0
                 if invite.code not in self.index[guild.id]:
                     self.index[guild.id][invite.code] = self.invite_to_dict(invite)
+                    changed = True
                     if uses != 0:
                         discrepancies.append(invite)
                 elif uses != self.index[guild.id][invite.code]["uses"]:
@@ -145,11 +150,17 @@ class InviteManager(commands.Cog):
                 inv = discrepancies[0]
                 if member.id not in self.index[guild.id][inv.code]["joins"]:
                     self.index[guild.id][inv.code]["joins"].append(member.id)
+                    changed = True
                 if member.id in self.index[guild.id][inv.code]["leaves"]:
                     self.index[guild.id][inv.code]["leaves"].remove(member.id)
+                    changed = True
             for invite in invites:
-                self.index[guild.id][invite.code]["uses"] = invite.uses or 0
-        await self.index.flush()
+                uses = invite.uses or 0
+                if self.index[guild.id][invite.code]["uses"] != uses:
+                    self.index[guild.id][invite.code]["uses"] = uses
+                    changed = True
+        if changed:
+            await self.index.flush()
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
@@ -158,18 +169,20 @@ class InviteManager(commands.Cog):
         if not member.guild or member.guild.id not in self.index:
             return
         guild = member.guild
+        changed = False
         for code, data in list(self.index[guild.id].items()):
-            await asyncio.sleep(0)
             if member.id in data["joins"]:
                 self.index[guild.id][code]["joins"].remove(member.id)
                 self.index[guild.id][code]["leaves"].append(member.id)
-        await self.index.flush()
+                changed = True
+        if changed:
+            await self.index.flush()
 
     @commands.Cog.listener()
     async def on_invite_create(self, invite):
         if invite.guild.id in self.index:
             self.index[invite.guild.id][invite.code] = self.invite_to_dict(invite)
-        await self.index.flush()
+            await self.index.flush()
 
 
 async def setup(bot):

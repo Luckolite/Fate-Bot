@@ -8,7 +8,6 @@ A module for configuring per-server custom commands
 :license: Proprietary, see LICENSE for details
 """
 
-import asyncio
 import random
 from contextlib import suppress
 from time import time
@@ -26,11 +25,11 @@ m = AllowedMentions.none()
 
 class CustomCommands(commands.Cog):
     """ Cog class for handling custom commands """
-    cache: Dict[int, Dict[str, List[Union[Optional[str], float]]]] = {}
-    guilds: List[int] = []
 
     def __init__(self, bot: Fate) -> None:
         self.bot = bot
+        self.cache: Dict[int, Dict[str, List[Union[Optional[str], float]]]] = {}
+        self.guilds: Set[int] = set()
         self.cd = Cooldown(1, 10)
         self.cleanup_task.start()
 
@@ -46,17 +45,15 @@ class CustomCommands(commands.Cog):
         """ Index the servers with custom commands enabled """
         async with self.bot.utils.cursor() as cur:
             await cur.execute("select guild_id from cc;")
-            for (guild_id,) in set(await cur.fetchall()):
-                if guild_id not in self.guilds:
-                    self.guilds.append(guild_id)
+            self.guilds = {guild_id for (guild_id,) in await cur.fetchall()}
 
     @tasks.loop(minutes=1)
     async def cleanup_task(self) -> None:
         """ Uncache custom commands that haven't been used in awhile """
+        now = time()
         for guild_id, custom_commands in list(self.cache.items()):
             for command, (_resp, cached_at) in list(custom_commands.items()):
-                await asyncio.sleep(0)
-                if time() - cached_at > 60 * 10:
+                if now - cached_at > 60 * 10:
                     del self.cache[guild_id][command]
             if not self.cache[guild_id]:
                 del self.cache[guild_id]
@@ -133,8 +130,7 @@ class CustomCommands(commands.Cog):
                 "insert into cc values (%s, %s, %s);",
                 (ctx.guild.id, command, response),
             )
-        if ctx.guild.id not in self.guilds:
-            self.guilds.append(ctx.guild.id)
+        self.guilds.add(ctx.guild.id)
         if ctx.guild.id in self.cache:
             del self.cache[ctx.guild.id]
         await ctx.send(f"Added {command} as a custom command")
@@ -171,6 +167,14 @@ class CustomCommands(commands.Cog):
                     (ctx.guild.id, command),
                 )
                 await ctx.send(f"Removed `{command}`")
+            await cur.execute(
+                "select 1 from cc where guild_id = %s limit 1;",
+                (ctx.guild.id,),
+            )
+            if cur.rowcount:
+                self.guilds.add(ctx.guild.id)
+            else:
+                self.guilds.discard(ctx.guild.id)
         if ctx.guild.id in self.cache:
             del self.cache[ctx.guild.id]
 

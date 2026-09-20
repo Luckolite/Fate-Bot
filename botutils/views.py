@@ -12,7 +12,7 @@ Classes:
 :license: Proprietary, see LICENSE for details
 """
 
-from discord import ButtonStyle, Embed, Interaction, NotFound, ui
+from discord import ButtonStyle, Embed, Forbidden, Interaction, NotFound, ui
 
 from . import colors
 
@@ -42,7 +42,7 @@ class CancelButton(ui.View):
         super().__init__(timeout=3600)
 
     async def on_error(self, interaction: Interaction, error: Exception, item: ui.Item) -> None:
-        if not isinstance(error, NotFound):
+        if not isinstance(error, (NotFound, Forbidden)):
             raise error
 
     @ui.button(label="Cancel", style=ButtonStyle.red)
@@ -54,10 +54,10 @@ class CancelButton(ui.View):
                     "You need manage_message permissions to cancel this", ephemeral=True
                 )
             self.is_cancelled = True
+            self.stop()
             await interaction.response.send_message("Cancelled the operation")
             await interaction.message.edit(view=None)
-            self.stop()
-        except NotFound:
+        except (NotFound, Forbidden):
             pass
 
 

@@ -15,6 +15,7 @@ import os
 import sys
 import traceback
 from base64 import b64decode, b64encode
+from collections import deque
 from contextlib import suppress
 from datetime import datetime, timezone
 from math import isfinite
@@ -22,6 +23,7 @@ from pathlib import Path
 from time import time, monotonic
 from typing import Any, Dict, Optional, Union
 from urllib.parse import quote_plus
+from weakref import WeakValueDictionary
 
 import aiohttp
 import aiomysql
@@ -73,6 +75,8 @@ from organism.fate_service import build_organism_service
 
 PRIMARY_ONLY_EXTENSIONS = frozenset({"polis", "dev", "backup"})
 ACTIVE_SERVER_METRIC_REFRESH_SECONDS = 5 * 60
+MAX_DISCORD_MESSAGE_CACHE = 16_000
+MAX_DEFERRED_LOGS = 1_000
 
 if __name__ == "__main__":
     # Cogs import `fate` for shared types. Reuse this running module instead of
@@ -281,13 +285,13 @@ class Fate(commands.AutoShardedBot):
         self.suppressed = TemporaryList(keep_items_for=15)
         self.restricted = {}
         self.toggles = {}
-        self.file_locks = {}
+        self.file_locks = WeakValueDictionary()
         self.operation_locks = []
         self.tasks = {}
         self.filtered_messages = {}
         self.views = {}
         self.login_errors = []
-        self.logs = []
+        self.logs = deque(maxlen=MAX_DEFERRED_LOGS)
         self.ignored_locations = []
         self._mongo_client = None
         self._aio_mongo_client = None
@@ -346,7 +350,10 @@ class Fate(commands.AutoShardedBot):
             command_prefix=get_prefixes_async,
             intents=discord.Intents.all(),
             activity=discord.Game(name=self.config["activity_status"]),
-            max_messages=self.config["max_cached_messages"],
+            max_messages=min(
+                max(1_000, int(self.config["max_cached_messages"])),
+                MAX_DISCORD_MESSAGE_CACHE,
+            ),
             owner_ids=configured_owner_ids,
             allowed_contexts=app_commands.AppCommandContext(
                 guild=True,

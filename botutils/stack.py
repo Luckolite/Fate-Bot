@@ -29,9 +29,23 @@ class Stack:
         self.timeout = timeout
         self.max_stack = max_stack
         self.index = {}
+        self._last_cleanup = time()
+
+    def cleanup(self, now=None):
+        now = time() if now is None else now
+        if not self.timeout or now - self._last_cleanup < 60:
+            return
+        cutoff = now - self.timeout
+        self.index = {
+            unique_id: last_used
+            for unique_id, last_used in self.index.items()
+            if last_used >= cutoff
+        }
+        self._last_cleanup = now
 
     def get_stack(self, unique_id):
         """Gets the IDs number of stacked intervals"""
+        self.cleanup()
         if unique_id in self.index:
             time_since = time() - self.index[unique_id]
             self.index[unique_id] = time()

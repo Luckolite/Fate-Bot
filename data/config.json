@@ -49,7 +49,7 @@
     "gc_verify_channel": 809590441779396618,
     "use_default_help": false,
     "activity_status": ".help",
-    "max_cached_messages": 64000,
+    "max_cached_messages": 16000,
     "debug_mode": false,
     "debug_logging": false,
     "translation": {

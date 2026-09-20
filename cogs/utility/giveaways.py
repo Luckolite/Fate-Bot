@@ -17,6 +17,7 @@ from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from os import path
 from typing import Optional
+from weakref import WeakValueDictionary
 
 import discord
 from discord import Forbidden, NotFound, app_commands
@@ -72,7 +73,7 @@ class GiveawayEntryView(discord.ui.View):
         *,
         ended: bool = False,
     ):
-        super().__init__(timeout=None)
+        super().__init__(timeout=1 if ended else None)
         self.cog = cog
         self.guild_id = str(guild_id)
         self.giveaway_id = str(giveaway_id)
@@ -145,9 +146,9 @@ class Giveaways(commands.Cog):
                 self.data = json.load(file)
         self.data, self._migration_pending = self.normalize_data(self.data)
         self.resume_fetch_lock = asyncio.Lock()
-        self.entry_locks = {}
-        self.finish_locks = {}
-        self.registered_views = []
+        self.entry_locks = WeakValueDictionary()
+        self.finish_locks = WeakValueDictionary()
+        self.registered_views = {}
         self._views_loaded = False
         if "giveaways" not in self.bot.tasks:
             self.bot.tasks["giveaways"] = {}
@@ -229,9 +230,10 @@ class Giveaways(commands.Cog):
             await self.resume_tasks()
 
     async def cog_unload(self) -> None:
-        for view in self.registered_views:
+        for view in self.registered_views.values():
             with suppress(Exception):
                 self.bot.remove_view(view)
+                view.stop()
         self.registered_views.clear()
         tasks = []
         for task_id, task in list(self.bot.tasks.get("giveaways", {}).items()):
@@ -251,8 +253,19 @@ class Giveaways(commands.Cog):
                     continue
                 view = GiveawayEntryView(self, guild_id, giveaway_id)
                 self.bot.add_view(view, message_id=int(data["message_id"]))
-                self.registered_views.append(view)
+                self.registered_views[(str(guild_id), str(giveaway_id))] = view
         self._views_loaded = True
+
+    def discard_registered_view(self, guild_id, giveaway_id) -> None:
+        views = getattr(self, "registered_views", None)
+        if not views:
+            return
+        view = views.pop((str(guild_id), str(giveaway_id)), None)
+        if view is None:
+            return
+        with suppress(Exception):
+            self.bot.remove_view(view)
+        view.stop()
 
     def get_giveaway(self, guild_id, giveaway_id) -> Optional[dict]:
         return self.data.get(str(guild_id), {}).get(str(giveaway_id))
@@ -269,6 +282,7 @@ class Giveaways(commands.Cog):
             await file.write(json.dumps(self.data, separators=(",", ":")))
 
     async def remove_giveaway(self, guild_id, giveaway_id) -> None:
+        self.discard_registered_view(guild_id, giveaway_id)
         records = self.data.get(str(guild_id))
         if records is None:
             return
@@ -489,6 +503,7 @@ class Giveaways(commands.Cog):
             ended_view = GiveawayEntryView(self, guild_id, giveaway_id, ended=True)
             with suppress(NotFound, Forbidden, discord.HTTPException):
                 await message.edit(embed=self.make_embed(data), view=ended_view)
+            self.discard_registered_view(guild_id, giveaway_id)
             if winners:
                 mentions = " ".join(winner.mention for winner in winners)
                 content = f"{ENTRY_EMOJI} Congratulations {mentions}! You won **{data['prize']}**."
@@ -551,6 +566,7 @@ class Giveaways(commands.Cog):
             if data.get("channel_id") == channel.id
         ]
         for giveaway_id in removed:
+            self.discard_registered_view(guild_id, giveaway_id)
             task_id = f"giveaway-{guild_id}-{giveaway_id}"
             task = self.bot.tasks.get("giveaways", {}).pop(task_id, None)
             if task and not task.done():
@@ -566,6 +582,7 @@ class Giveaways(commands.Cog):
         guild_id = str(guild.id)
         records = self.data.pop(guild_id, {})
         for giveaway_id in records:
+            self.discard_registered_view(guild_id, giveaway_id)
             task_id = f"giveaway-{guild_id}-{giveaway_id}"
             task = self.bot.tasks.get("giveaways", {}).pop(task_id, None)
             if task and not task.done():
@@ -826,7 +843,7 @@ class Giveaways(commands.Cog):
             raise
         data["message_id"] = message.id
         await self.save_data()
-        self.registered_views.append(view)
+        self.registered_views[(guild_id, giveaway_id)] = view
         self.start_giveaway_task(guild_id, giveaway_id)
         await ctx.send(
             f"Started giveaway `{giveaway_id}` in {channel.mention}: {message.jump_url}",
