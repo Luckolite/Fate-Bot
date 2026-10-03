@@ -1368,6 +1368,7 @@ class Moderation(commands.Cog):
             await msg.edit(embed=e)
 
     @commands.hybrid_command(name="roles", description="Shows how many people have each role")
+    @commands.guild_only()
     @commands.cooldown(2, 5, commands.BucketType.user)
     @check_if_running()
     @commands.has_permissions(manage_roles=True)
@@ -1375,10 +1376,16 @@ class Moderation(commands.Cog):
     @check_if_running()
     async def roles(self, ctx):
         """ Formats the role list to show how many members each role has """
-        longest = sorted(ctx.guild.roles, key=lambda r: len(r.name), reverse=True)[0]
+        guild_roles = ctx.guild.roles
+        if not guild_roles:
+            return await ctx.send(
+                "I don't have this server's role data yet. "
+                "Make sure Fate is added to the server, then try again."
+            )
+        longest = max(guild_roles, key=lambda r: len(r.name))
         length = len(longest.name) + 3
         lines = [f"Name:{' ' * (length - 5)}Members:"]
-        for role in sorted(ctx.guild.roles, key=lambda r: r.position, reverse=True):
+        for role in sorted(guild_roles, key=lambda r: r.position, reverse=True):
             name = normalize('NFKD', role.name).encode('ascii', 'ignore').decode()
             name = "".join(c for c in name if c in printable)
             lines.append(f"{name}{' ' * (length - len(name))}{len(role.members)}")

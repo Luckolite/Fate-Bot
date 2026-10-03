@@ -24,6 +24,7 @@ MYSQL_CONFIG_KEYS = frozenset(
         "autocommit",
         "min_pool_size",
         "max_pool_size",
+        "pool_recycle",
     }
 )
 

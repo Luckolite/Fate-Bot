@@ -59,6 +59,7 @@ from botutils.log_paths import DISCORD_LOG_PATH, ensure_logging_directory
 from botutils.module_reload import ModuleReloadControl
 from botutils.resources import Cache as LegacyResourceCache
 from botutils.resources import load_builtin_cache_snapshots
+from botutils.http_resources import read_resource
 from botutils.slash_commands import install_legacy_slash_commands
 from botutils.telemetry import (
     MongoTelemetryListener,
@@ -841,6 +842,7 @@ class Fate(commands.AutoShardedBot):
     async def get_resource(self, url: str, method: str = "get", *args, **kwargs):
         """Download a resource using a reusable HTTP session."""
         label = kwargs.pop("label", url)
+        max_size = kwargs.pop("max_size", 8_000_000)
         try:
             if self._resource_session is None or self._resource_session.closed:
                 self._resource_session = aiohttp.ClientSession()
@@ -848,11 +850,15 @@ class Fate(commands.AutoShardedBot):
             if operation is None:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             async with operation(url, *args, **kwargs) as response:
-                if response.content_length and response.content_length > 8_000_000:
+                if (
+                    max_size is not None
+                    and response.content_length
+                    and response.content_length > max_size
+                ):
                     raise commands.BadArgument(f"{label} is too large")
                 if response.status != 200:
                     raise commands.BadArgument(f"Failed to fetch {label}")
-                return await response.read()
+                return await read_resource(response, max_size, label)
         except asyncio.TimeoutError:
             raise commands.BadArgument(f"Timed out fetching {label}")
         except aiohttp.ClientPayloadError:
@@ -923,6 +929,7 @@ class Fate(commands.AutoShardedBot):
                     loop=self.loop,
                     minsize=sql.get("min_pool_size", 1),
                     maxsize=sql.get("max_pool_size", 16),
+                    pool_recycle=sql.get("pool_recycle", 1800),
                 )
                 self.pool = instrument_mysql_pool(pool, self.telemetry)
                 self._pool_ready.set()

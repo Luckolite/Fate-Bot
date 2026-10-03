@@ -84,8 +84,8 @@ class CaseManager(commands.Cog):
                 await cur.execute(
                     "select user_id, case_action, reason, link, case_number, created_by, created_at "
                     "from cases where guild_id = %s and user_id = %s "
-                    "order by case_number desc;",
-                    (guild_id, usr_id),
+                    "order by case_number desc limit 16;",
+                    (guild_id, str(usr_id)),
                 )
                 results = await cur.fetchall()
             if not results:
@@ -105,7 +105,7 @@ class CaseManager(commands.Cog):
                 await cur.execute(
                     "select user_id, case_action, reason, link, case_number, created_by, created_at "
                     "from cases where guild_id = %s and reason like %s "
-                    "order by case_number desc;",
+                    "order by case_number desc limit 16;",
                     (guild_id, query),
                 )
                 results = await cur.fetchall()
@@ -125,7 +125,7 @@ class CaseManager(commands.Cog):
             async with self.bot.utils.cursor() as cur:
                 await cur.execute(
                     "select user_id, case_action, reason, link, case_number, created_by, created_at "
-                    "from cases where guild_id = %s order by case_number desc;",
+                    "from cases where guild_id = %s order by case_number desc limit 16;",
                     (guild_id,),
                 )
                 results = await cur.fetchall()
@@ -240,22 +240,15 @@ class CaseManager(commands.Cog):
         guild_id = ctx.guild.id
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
-                "select case_number from cases "
-                "where guild_id = %s "
-                "and case_number = %s "
-                "limit 1;",
-                (guild_id, case_number),
-            )
-            results = await cur.fetchone()
-            if not results:
-                return await ctx.send("There is no case by that number")
-            await cur.execute(
                 "delete from cases "
                 "where guild_id = %s "
                 "and case_number = %s "
                 "limit 1;",
                 (guild_id, case_number),
             )
+            removed = cur.rowcount
+        if not removed:
+            return await ctx.send("There is no case by that number")
         await ctx.send(f"Deleted case #{case_number}")
 
 

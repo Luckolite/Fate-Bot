@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import time
 from typing import Any
 
@@ -55,23 +56,23 @@ class MySQLRankingStore:
     def __init__(self, **config: Any):
         self.config = config
         self.pool = None
+        self._pool_lock = asyncio.Lock()
 
     async def _pool(self):
-        if self.pool is None:
-            self.pool = await aiomysql.create_pool(
-                minsize=1,
-                maxsize=5,
-                autocommit=True,
-                connect_timeout=4,
-                **self.config,
-            )
-        return self.pool
+        async with self._pool_lock:
+            if self.pool is None:
+                options = dict(minsize=1, maxsize=5, autocommit=True,
+                               connect_timeout=4, pool_recycle=1800)
+                options.update(self.config)
+                self.pool = await aiomysql.create_pool(**options)
+            return self.pool
 
     async def close(self):
-        if self.pool is not None:
-            self.pool.close()
-            await self.pool.wait_closed()
-            self.pool = None
+        async with self._pool_lock:
+            if self.pool is not None:
+                self.pool.close()
+                await self.pool.wait_closed()
+                self.pool = None
 
     async def _fetchall(self, query: str, args: tuple = ()):
         pool = await self._pool()
@@ -86,21 +87,20 @@ class MySQLRankingStore:
         guild_id: int,
         ranking_config: dict[str, Any],
     ) -> dict[str, Any]:
-        server_rows = await self._fetchall(
-            "select target.xp, (select count(*) + 1 from msg ranked "
+        rows = await self._fetchall(
+            "select 'server', target.xp, (select count(*) + 1 from msg ranked "
             "where ranked.guild_id = target.guild_id and ranked.xp > target.xp) "
-            "from msg target where target.guild_id = %s and target.user_id = %s limit 1",
-            (guild_id, user_id),
-        )
-        global_rows = await self._fetchall(
-            "select target.xp, (select count(*) + 1 from global_msg ranked "
-            "where ranked.xp > target.xp) from global_msg target "
-            "where target.user_id = %s limit 1",
-            (user_id,),
+            "from (select guild_id, xp from msg where guild_id = %s "
+            "and user_id = %s limit 1) target union all "
+            "select 'global', target.xp, (select count(*) + 1 from global_msg ranked "
+            "where ranked.xp > target.xp) from "
+            "(select xp from global_msg where user_id = %s limit 1) target",
+            (guild_id, user_id, user_id),
         )
 
-        server_xp, server_rank = server_rows[0] if server_rows else (0, None)
-        global_xp, global_rank = global_rows[0] if global_rows else (0, None)
+        scores = {board: (xp, rank) for board, xp, rank in rows}
+        server_xp, server_rank = scores.get("server", (0, None))
+        global_xp, global_rank = scores.get("global", (0, None))
         return {
             "server": {**calculate_level(server_xp, ranking_config), "rank": server_rank},
             "global": {**calculate_level(global_xp, RANKING_DEFAULTS), "rank": global_rank},

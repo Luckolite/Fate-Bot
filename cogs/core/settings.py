@@ -19,6 +19,7 @@ from discord.ext import commands
 from apps.Dashboard.dashboard.module_validation import validate_module_settings
 from apps.Dashboard.dashboard.validation import MAX_PURGE_LIMIT, ValidationError
 from botutils import colors
+from botutils.prefixes import save_prefix
 from botutils.localization import (
     LANGUAGES,
     LANGUAGE_EMOJIS,
@@ -757,15 +758,9 @@ class SettingsMenu(ui.View):
         )
 
     async def save_prefix(self, prefix: str, override: bool) -> None:
-        await self.bot.aio_mongo["GuildPrefixes"].update_one(
-            {"_id": self.guild.id},
-            {"$set": {"prefix": prefix, "override": override}},
-            upsert=True
-        )
-        self.bot.guild_prefixes[self.guild.id] = {
-            "prefix": prefix,
-            "override": override
-        }
+        await save_prefix(self.bot, "GuildPrefixes", self.guild.id, {
+            "prefix": prefix, "override": override,
+        })
 
     async def save_messages(self, key: str, value) -> None:
         cog = self.messages_cog

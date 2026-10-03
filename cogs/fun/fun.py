@@ -41,6 +41,7 @@ except ImportError:
 MAGIK_VIDEO_MAX_SECONDS = 30
 MAGIK_VIDEO_FPS = 15
 MAGIK_VIDEO_SIZE = 384
+MAGIK_MAX_WORKERS = 2
 SLIME_VIDEO_FPS = 18
 SLIME_VIDEO_FRAMES = 58
 SLIME_VIDEO_SIZE = (512, 288)
@@ -48,6 +49,33 @@ SLIME_VIDEO_SIZE = (512, 288)
 
 class MagikMediaError(Exception):
     """A media-processing error that is safe to show to a command user."""
+
+
+def _magik_worker_count(cpu_count=None):
+    """Keep enough CPU available for Discord and the rest of the bot."""
+    cpu_count = cpu_count or os.cpu_count() or 2
+    return max(1, min(MAGIK_MAX_WORKERS, cpu_count - 2))
+
+
+def _snipe_embed(embed: discord.Embed) -> discord.Embed:
+    """Rebuild received link/media previews as a sendable rich embed."""
+    data = embed.to_dict()
+    video = data.pop("video", {})
+    data.pop("provider", None)
+    data.pop("flags", None)
+    data["type"] = "rich"
+    for key in ("image", "thumbnail"):
+        if key in data:
+            url = data[key].get("url")
+            if url:
+                data[key] = {"url": url}
+            else:
+                del data[key]
+    if not data.get("description"):
+        data["description"] = (
+            data.get("url") or video.get("url") or "This embed had no text."
+        )[:4096]
+    return discord.Embed.from_dict(data)
 
 
 tier_damage = {
@@ -420,13 +448,14 @@ class Fun(
         with open("./data/personalities.json", encoding="utf-8") as file:
             self.personalities = json.load(file)  # type: dict
 
-        # Liquid rescaling is CPU-heavy and can hold the GIL in its Pillow
-        # fallback. Processes keep that work away from Discord's event loop;
-        # retaining two CPUs keeps the loop and the rest of the bot responsive.
-        cpu_count = os.cpu_count() or 2
+        # Liquid rescaling is CPU-heavy. A small process pool and one video at a
+        # time keep long renders from starving Discord's event loop and other
+        # bot services, especially when Windows first spawns the workers.
+        self._magik_workers = _magik_worker_count()
         self._magik_executor = ProcessPoolExecutor(
-            max_workers=max(1, cpu_count - 2)
+            max_workers=self._magik_workers
         )
+        self._magik_video_slots = asyncio.Semaphore(1)
         self._ffmpeg = shutil.which("ffmpeg")
         self._ffprobe = shutil.which("ffprobe")
         self.clear_old_messages_task.start()
@@ -521,36 +550,36 @@ class Fun(
     async def snipe(self, ctx):
         guild_id = ctx.guild.id
         content = ctx.message.content if hasattr(ctx, "message") else ""
+        toggle = "snipe enable" in content or "snipe disable" in content
+        if toggle and not ctx.author.guild_permissions.administrator:
+            return await ctx.send("Only administrators can enable this")
+        reply = None
         async with self.bot.utils.cursor() as cur:
-            if "snipe enable" in content or "snipe disable" in content:
-                if not ctx.author.guild_permissions.administrator:
-                    return await ctx.send("Only administrators can enable this")
-                await cur.execute(
-                    "select * from snipe where guild_id = %s;", (guild_id,)
-                )
+            await cur.execute("select 1 from snipe where guild_id = %s limit 1;", (guild_id,))
+            enabled = bool(cur.rowcount)
+            if toggle:
                 if cur.rowcount:
                     if "enable" in content:
-                        return await ctx.send("Sniping is already enabled")
-                    await cur.execute(
-                        "delete from snipe where guild_id = %s;", (guild_id,)
-                    )
-                    await ctx.send("Disabled sniping")
+                        reply = "Sniping is already enabled"
+                    else:
+                        await cur.execute(
+                            "delete from snipe where guild_id = %s;", (guild_id,)
+                        )
+                        reply = "Disabled sniping"
                 else:
                     if "disable" in content:
-                        return await ctx.send("Sniping isn't enabled")
-                    await cur.execute(
-                        "insert into snipe values (%s);", (guild_id,)
-                    )
-                    await ctx.send("Enabled sniping")
-                return
-
-            await cur.execute(
-                "select * from snipe where guild_id = %s;", (guild_id,)
+                        reply = "Sniping isn't enabled"
+                    else:
+                        await cur.execute(
+                            "insert into snipe values (%s);", (guild_id,)
+                        )
+                        reply = "Enabled sniping"
+        if reply:
+            return await ctx.send(reply)
+        if not enabled:
+            return await ctx.send(
+                f"Snipe requires being enabled by an administrator. Use `{ctx.prefix}snipe enable`"
             )
-            if not cur.rowcount:
-                return await ctx.send(
-                    f"Snipe requires being enabled by an administrator. Use `{ctx.prefix}snipe enable`"
-                )
 
         channel_id = ctx.channel.id
         if channel_id not in self.dat:
@@ -571,7 +600,10 @@ class Fun(
 
         is_admin = ctx.author.guild_permissions.administrator
         if msg.embeds:
-            return await ctx.send(f"{msg.author}s message was | deleted {format_date(time)} ago", embed=msg.embeds[0])
+            return await ctx.send(
+                f"{msg.author}s message was | deleted {format_date(time)} ago",
+                embed=_snipe_embed(msg.embeds[0]),
+            )
         if len(msg.content) > 256 and not is_admin:
             return await ctx.send("And **wHy** would I snipe a message *that*  big")
 
@@ -636,37 +668,29 @@ class Fun(
             if user2:
                 user_id = user2.id
 
+            queries = [
+                "select count(*) from battles where winner = %s",
+                "select count(*) from battles where loser = %s",
+            ]
+            args = (user_id, user_id)
+            if user2:
+                queries.extend([
+                    "select count(*) from battles where winner = %s and loser = %s",
+                    "select count(*) from battles where winner = %s and loser = %s",
+                ])
+                args += (ctx.author.id, user2.id, user2.id, ctx.author.id)
             async with self.bot.utils.cursor() as cur:
-                await cur.execute(
-                    "select * from battles where winner = %s;", (user_id,)
-                )
-                wins = cur.rowcount
-                await cur.execute(
-                    "select * from battles where loser = %s;", (user_id,)
-                )
-                losses = cur.rowcount
-
-                # Create the basic version of the embed
-                e = discord.Embed(color=self.bot.config["theme_color"])
+                await cur.execute(" union all ".join(queries) + ";", args)
+                counts = [row[0] for row in await cur.fetchall()]
+            wins, losses = counts[:2]
+            e = discord.Embed(color=self.bot.config["theme_color"])
+            s = "s" if wins != 1 else ""
+            e.description = f"**{wins}** win{s} and **{losses}** losses"
+            if user2:
+                wins, losses = counts[2:]
                 s = "s" if wins != 1 else ""
-                e.description = f"**{wins}** win{s} and **{losses}** losses"
-
-                # Add the authors stats against the user
-                if user2:
-                    await cur.execute(
-                        "select * from battles where winner = %s and loser = %s",
-                        (ctx.author.id, user2.id),
-                    )
-                    wins = cur.rowcount
-                    await cur.execute(
-                        "select * from battles where winner = %s and loser = %s",
-                        (user2.id, ctx.author.id),
-                    )
-                    losses = cur.rowcount
-                    s = "s" if wins != 1 else ""
-                    e.description += f". You've won {wins} time{s} against them and lost {losses} times"
-
-                return await ctx.send(embed=e)
+                e.description += f". You've won {wins} time{s} against them and lost {losses} times"
+            return await ctx.send(embed=e)
 
         # Create a battle card
         if not user1:
@@ -885,7 +909,9 @@ class Fun(
             raise RuntimeError(detail or "The media process failed")
         return stdout
 
-    async def _probe_magik_video(self, input_path: Path):
+    async def _probe_magik_video(
+        self, input_path: Path, enforce_duration_limit=True
+    ):
         if not self._ffmpeg or not self._ffprobe:
             raise MagikMediaError(
                 "Video magik needs FFmpeg and FFprobe installed on the bot host."
@@ -917,7 +943,7 @@ class Fun(
             raise MagikMediaError("I couldn't determine that video's duration.")
         if not math.isfinite(duration) or duration <= 0:
             raise MagikMediaError("I couldn't determine that video's duration.")
-        if duration > MAGIK_VIDEO_MAX_SECONDS + 0.05:
+        if enforce_duration_limit and duration > MAGIK_VIDEO_MAX_SECONDS + 0.05:
             raise MagikMediaError(
                 f"Videos must be {MAGIK_VIDEO_MAX_SECONDS} seconds or shorter."
             )
@@ -937,7 +963,9 @@ class Fun(
         fps = min(MAGIK_VIDEO_FPS, max(1.0, source_fps))
         return duration, fps
 
-    async def _magik_video(self, data: bytes, progress=None):
+    async def _magik_video(
+        self, data: bytes, progress=None, enforce_duration_limit=True
+    ):
         """Extract, distort in parallel, and re-encode a short video."""
         if progress:
             progress(1, "Inspecting video")
@@ -949,7 +977,9 @@ class Fun(
             frame_dir.mkdir()
             await asyncio.to_thread(input_path.write_bytes, data)
 
-            duration, fps = await self._probe_magik_video(input_path)
+            duration, fps = await self._probe_magik_video(
+                input_path, enforce_duration_limit=enforce_duration_limit
+            )
             if progress:
                 progress(5, "Extracting frames")
             frame_pattern = str(frame_dir / "%08d.png")
@@ -985,21 +1015,41 @@ class Fun(
             if progress:
                 progress(15, f"Distorting {len(frames)} frames")
             loop = asyncio.get_running_loop()
-            frame_jobs = [
+            frame_iter = iter(frames)
+            frame_jobs = {
                 loop.run_in_executor(
                     self._magik_executor, _magik_frame_file, str(frame)
                 )
-                for frame in frames
-            ]
+                for frame in (
+                    next(frame_iter, None) for _ in range(self._magik_workers)
+                )
+                if frame is not None
+            }
             frame_errors = []
-            for completed, job in enumerate(asyncio.as_completed(frame_jobs), start=1):
-                try:
-                    await job
-                except Exception as error:
-                    frame_errors.append(error)
-                if progress:
-                    percent = 15 + round(70 * completed / len(frame_jobs))
-                    progress(percent, f"Distorting frames ({completed}/{len(frame_jobs)})")
+            completed = 0
+            while frame_jobs:
+                done, frame_jobs = await asyncio.wait(
+                    frame_jobs, return_when=asyncio.FIRST_COMPLETED
+                )
+                for job in done:
+                    completed += 1
+                    try:
+                        await job
+                    except Exception as error:
+                        frame_errors.append(error)
+                    next_frame = next(frame_iter, None)
+                    if next_frame is not None:
+                        frame_jobs.add(loop.run_in_executor(
+                            self._magik_executor,
+                            _magik_frame_file,
+                            str(next_frame),
+                        ))
+                    if progress:
+                        percent = 15 + round(70 * completed / len(frames))
+                        progress(
+                            percent,
+                            f"Distorting frames ({completed}/{len(frames)})",
+                        )
             if frame_errors:
                 self.bot.log.warning(
                     f"Magik video frame distortion failed: {str(frame_errors[0])[-2000:]}"
@@ -1042,7 +1092,10 @@ class Fun(
                 progress(100, "Complete")
             return await asyncio.to_thread(output_path.read_bytes)
 
-    async def _magik_media(self, data: bytes, is_image=None, progress=None):
+    async def _magik_media(
+        self, data: bytes, is_image=None, progress=None,
+        enforce_duration_limit=True,
+    ):
         """Dispatch one downloaded item to the image or video pipeline."""
         if is_image is None:
             is_image = await asyncio.to_thread(_is_supported_image, data)
@@ -1052,14 +1105,30 @@ class Fun(
                 self._magik_executor, _magik_image, data
             )
             return distorted, "png"
-        return await self._magik_video(data, progress), "mp4"
+        async with self._magik_video_slots:
+            return await self._magik_video(
+                data,
+                progress,
+                enforce_duration_limit=enforce_duration_limit,
+            ), "mp4"
 
-    async def _magik_results(self, urls, progress_callback=None):
+    async def _magik_results(
+        self, urls, progress_callback=None, allow_long_video=False
+    ):
         """Download and distort media for prefix and application commands."""
         downloads = await asyncio.gather(*(
-            self.bot.get_resource(url, label=f"media {index}", timeout=30)
+            self.bot.get_resource(
+                url,
+                label=f"media {index}",
+                timeout=30,
+                max_size=None if allow_long_video else 8_000_000,
+            )
             for index, url in enumerate(urls, start=1)
         ), return_exceptions=True)
+        download_errors = [
+            str(result) for result in downloads
+            if isinstance(result, commands.BadArgument)
+        ]
         payloads = [data for data in downloads if isinstance(data, bytes)]
         image_flags = await asyncio.gather(*(
             asyncio.to_thread(_is_supported_image, data) for data in payloads
@@ -1107,7 +1176,12 @@ class Fun(
                 def item_progress(percent, stage, index=index):
                     update_video_progress(index, percent, stage)
 
-            media_jobs.append(self._magik_media(data, is_image, item_progress))
+            media_jobs.append(self._magik_media(
+                data,
+                is_image,
+                item_progress,
+                enforce_duration_limit=not allow_long_video,
+            ))
 
         try:
             processed = await asyncio.gather(
@@ -1131,12 +1205,19 @@ class Fun(
             else:
                 await publish_progress(stage="Failed")
         failed = len(downloads) - len(media)
-        errors = [
+        errors = download_errors + [
             str(result) for result in processed
             if isinstance(result, MagikMediaError)
         ]
         if not media:
-            return None, errors[0] if errors else (
+            if errors:
+                return None, errors[0]
+            if allow_long_video:
+                return None, (
+                    "I couldn't process that media. Try a PNG, JPEG, GIF, WebP, "
+                    "or another video format."
+                )
+            return None, (
                 "I couldn't process that media. Try a PNG, JPEG, GIF, WebP, "
                 f"or a video up to {MAGIK_VIDEO_MAX_SECONDS} seconds long."
             )
@@ -1197,7 +1278,11 @@ class Fun(
                 await progress_message.edit(content=progress_content)
 
         async with ctx.typing():
-            files, content = await self._magik_results(urls, update_progress)
+            files, content = await self._magik_results(
+                urls,
+                update_progress,
+                allow_long_video=await self.bot.is_owner(ctx.author),
+            )
         if files is None:
             return await ctx.send(content)
         await ctx.send(content, files=files)
@@ -1279,7 +1364,11 @@ class Fun(
             else:
                 await progress_message.edit(content=progress_content)
 
-        files, content = await self._magik_results(selected, update_progress)
+        files, content = await self._magik_results(
+            selected,
+            update_progress,
+            allow_long_video=await self.bot.is_owner(interaction.user),
+        )
         if files is None:
             return await interaction.followup.send(content)
         await interaction.followup.send(content=content, files=files)

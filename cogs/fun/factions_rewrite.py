@@ -8,7 +8,8 @@ import secrets
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from time import time
+from time import monotonic, time
+from weakref import WeakValueDictionary
 from typing import Any, Mapping, Optional
 
 import discord
@@ -20,6 +21,7 @@ from botutils.colors import pink, purple
 
 FORAGE_ENERGY_REGEN_SECONDS = 10 * 60
 MAX_PENDING_CLAIM_CHANNELS = 10_000
+UNCLAIMED_CHANNEL_TTL = 60
 FORAGE_LEVEL_XP = (
     0, 60, 180, 400, 750, 1_250, 1_900, 2_800, 4_000, 5_500,
     7_500, 9_800, 12_500, 15_750, 19_500,
@@ -1368,6 +1370,9 @@ class FactionsRewrite(commands.Cog, name="Factions"):
         self.ready = asyncio.Event()
         self.initialization_error = None
         self.claim_counter = {}
+        self.unclaimed_channels = {}
+        self.claim_lookup_locks = WeakValueDictionary()
+        self.claim_revision = 0
         self.work_cooldowns = {}
         self.work_counter = {}
         self.blackjack_views = set()
@@ -1859,6 +1864,7 @@ class FactionsRewrite(commands.Cog, name="Factions"):
                 "faction_id = VALUES(faction_id), claimed_at = VALUES(claimed_at)",
                 (ctx.guild.id, channel.id, faction.id, now),
             )
+        self.invalidate_claim((ctx.guild.id, channel.id))
         await ctx.send(f"Claimed {channel.mention} for **{faction.name}** (${cost:,}).")
 
     @factions.command(name="unclaim")
@@ -2283,6 +2289,7 @@ class FactionsRewrite(commands.Cog, name="Factions"):
                         "(user_id, item_key, discovered_at) VALUES (%s, %s, %s)",
                         (user_id, item, now),
                     )
+        self.invalidate_claim()
         await ctx.send(f"Migrated legacy factions into MySQL: {summary}")
 
     @staticmethod
@@ -2417,6 +2424,33 @@ class FactionsRewrite(commands.Cog, name="Factions"):
             plan["foragers"].append((user_id, profile))
         return plan
 
+    def invalidate_claim(self, key=None):
+        self.claim_revision += 1
+        if key is None:
+            self.unclaimed_channels.clear()
+        else:
+            self.unclaimed_channels.pop(key, None)
+
+    async def find_channel_claim(self, key):
+        lock = self.claim_lookup_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            now = monotonic()
+            expires = self.unclaimed_channels.get(key, 0)
+            if expires > now:
+                return None
+            self.unclaimed_channels.pop(key, None)
+            revision = self.claim_revision
+            row = await self.repo.one(
+                "SELECT f.id FROM faction_claims c JOIN factions f ON f.id = c.faction_id "
+                "WHERE c.guild_id = %s AND c.channel_id = %s", key,
+            )
+            # A successful claim/migration may commit while this read yields.
+            if not row and revision == self.claim_revision:
+                self.unclaimed_channels[key] = monotonic() + UNCLAIMED_CHANNEL_TTL
+                if len(self.unclaimed_channels) > MAX_PENDING_CLAIM_CHANNELS:
+                    self.unclaimed_channels.pop(next(iter(self.unclaimed_channels)))
+            return row
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if not self.ready.is_set() or self.initialization_error or not message.guild or message.author.bot:
@@ -2428,10 +2462,7 @@ class FactionsRewrite(commands.Cog, name="Factions"):
             if len(self.claim_counter) > MAX_PENDING_CLAIM_CHANNELS:
                 self.claim_counter.pop(next(iter(self.claim_counter)))
             return
-        row = await self.repo.one(
-            "SELECT f.id FROM faction_claims c JOIN factions f ON f.id = c.faction_id "
-            "WHERE c.guild_id = %s AND c.channel_id = %s", key,
-        )
+        row = await self.find_channel_claim(key)
         if not row:
             return
         faction_id = int(row[0])

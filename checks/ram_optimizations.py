@@ -99,6 +99,9 @@ class AsyncRamOptimizationChecks(unittest.IsolatedAsyncioTestCase):
         cog.ready.set()
         cog.initialization_error = None
         cog.claim_counter = {}
+        cog.unclaimed_channels = {}
+        cog.claim_lookup_locks = WeakValueDictionary()
+        cog.claim_revision = 0
         cog.repo = SimpleNamespace(one=AsyncMock())
 
         with patch("cogs.fun.factions_rewrite.MAX_PENDING_CLAIM_CHANNELS", 2):

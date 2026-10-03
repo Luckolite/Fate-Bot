@@ -115,6 +115,45 @@ class SelfRoles(commands.Cog):
             self.bot.menus_loaded = True
             self._menus_loaded_once = True
 
+    def release_menu_view(self, guild_id, message_id):
+        views = self.bot.views.get(guild_id, {})
+        key = str(message_id)
+        view = views.get(key)
+        # A replaced cog must not stop a menu registered by its successor.
+        if view is not None and view.config is self.config:
+            view.stop()
+            views.pop(key, None)
+        if not views:
+            self.bot.views.pop(guild_id, None)
+
+    def cog_unload(self):
+        for guild_id, views in list(self.bot.views.items()):
+            for message_id in list(views):
+                self.release_menu_view(guild_id, message_id)
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        for message_id in list(self.bot.views.get(guild.id, {})):
+            self.release_menu_view(guild.id, message_id)
+
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(self, payload):
+        menus = self.config.get(payload.guild_id, {})
+        changed = False
+        for message_id in payload.message_ids:
+            self.release_menu_view(payload.guild_id, message_id)
+            key = str(message_id)
+            if key in menus:
+                del menus[key]
+                changed = True
+        # Persist one guild's removals together so deleted views do not return
+        # on the next reload.
+        if changed:
+            if menus:
+                await self.config.flush()
+            else:
+                await self.config.remove(payload.guild_id)
+
     async def cog_command_error(self, ctx, error) -> None:
         """ Handle KeyError's from modifying menus """
         if cog := self.bot.get_cog("ErrorHandler"):
@@ -434,9 +473,7 @@ class SelfRoles(commands.Cog):
             new["channel_id"] = conf["channel_id"]
             new["categories"][conf["text"]] = conf["roles"]
             del self.config[ctx.guild.id][message_id]
-            with suppress(Exception):
-                self.bot.views[ctx.guild.id][message_id].stop()
-                del self.bot.views[ctx.guild.id][message_id]
+            self.release_menu_view(ctx.guild.id, message_id)
         self.config[ctx.guild.id][message_ids[0]] = new
         view = CategoryView(self, ctx.guild.id, message_ids[0])
         msg = await self.bot.get_channel(new["channel_id"]).fetch_message(message_ids[0])
@@ -721,6 +758,7 @@ class SelfRoles(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload):
+        self.release_menu_view(payload.guild_id, payload.message_id)
         if payload.guild_id in self.config:
             if str(payload.message_id) in self.config[payload.guild_id]:
                 await self.config.remove_sub(payload.guild_id, str(payload.message_id))

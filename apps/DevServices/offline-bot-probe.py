@@ -17,6 +17,10 @@ from fate import bot, load_auth_config  # noqa: E402
 
 async def main() -> None:
     bot.auth = load_auth_config(os.environ["FATE_AUTH_PATH"])
+    # Debug flags are owned by the main config. Simulate the secondary role
+    # only in this offline probe without changing the user's runtime settings.
+    bot.debug_mode = True
+    bot.debug_logging = False
     if not bot.debug_mode or bot.instance_role != "secondary" or bot.vote_url is not None:
         raise RuntimeError("The isolated test profile was not configured as secondary")
     bot.mongo.client.admin.command("ping")
@@ -53,7 +57,7 @@ async def main() -> None:
         )
 
     grouped_legacy_commands = {
-        "actions", "antiraid", "bot", "cases", "cc", "chatfilter",
+        "actions", "anti-raid", "bot", "cases", "cc", "chatfilter",
         "chatlock", "cookies", "emoji", "factions", "fun", "giveaway",
         "leave", "limits", "logger", "messages", "modmail",
         "modules", "notes", "ranking", "reactions", "restore-roles",
@@ -77,9 +81,12 @@ async def main() -> None:
     faction_sections = {
         option["name"] for option in faction_group.to_dict(bot.tree).get("options", [])
     }
-    expected_faction_entries = {"overview", "create", "info", "economy", "conflict"}
-    if not expected_faction_entries.issubset(faction_sections):
+    expected_faction_entries = {"overview", "help", "info", "management", "members", "economy", "conflict"}
+    if faction_sections != expected_faction_entries:
         raise RuntimeError(f"Unexpected /factions layout: {sorted(faction_sections)}")
+    management = next(option for option in faction_group.to_dict(bot.tree)["options"] if option["name"] == "management")
+    if "create" not in {option["name"] for option in management.get("options", [])}:
+        raise RuntimeError("The /factions management create command was not registered")
 
     bot.configure_application_command_scopes()
     installable = bot.tree.get_command("invite").to_dict(bot.tree)

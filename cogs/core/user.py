@@ -62,14 +62,16 @@ class User(commands.Cog):
     @commands.command(name="block", description="Blocks users from using the bot")
     @commands.is_owner()
     async def block(self, ctx, users: commands.Greedy[discord.User], *, reason="unspecified"):
+        if not users:
+            return
         async with self.bot.utils.cursor() as cur:
-            for user in users:
-                await cur.execute(
-                    "insert into blocked values (%s, %s, %s) "
-                    "on duplicate key update user_id = %s;",
-                    (user.id, str(user), reason, user.id)
-                )
-                await ctx.send(f"Blocked {user}")
+            await cur.executemany(
+                "insert into blocked values (%s, %s, %s) "
+                "on duplicate key update user_id = %s;",
+                [(user.id, str(user), reason, user.id) for user in users],
+            )
+        for user in users:
+            await ctx.send(f"Blocked {user}")
 
     @commands.command(name="unblock", description="Unblocks a user from using the bot")
     @commands.is_owner()

@@ -44,7 +44,7 @@ class CustomCommands(commands.Cog):
     async def on_ready(self) -> None:
         """ Index the servers with custom commands enabled """
         async with self.bot.utils.cursor() as cur:
-            await cur.execute("select guild_id from cc;")
+            await cur.execute("select distinct guild_id from cc;")
             self.guilds = {guild_id for (guild_id,) in await cur.fetchall()}
 
     @tasks.loop(minutes=1)
@@ -121,14 +121,16 @@ class CustomCommands(commands.Cog):
                 "select * from cc where guild_id = %s and command = %s;",
                 (ctx.guild.id, command),
             )
-            if cur.rowcount:
-                return await ctx.send(
-                    f"There's already a registered command under that. "
-                    f"You can remove it via `{ctx.prefix}cc remove {command}`"
+            exists = bool(cur.rowcount)
+            if not exists:
+                await cur.execute(
+                    "insert into cc values (%s, %s, %s);",
+                    (ctx.guild.id, command, response),
                 )
-            await cur.execute(
-                "insert into cc values (%s, %s, %s);",
-                (ctx.guild.id, command, response),
+        if exists:
+            return await ctx.send(
+                f"There's already a registered command under that. "
+                f"You can remove it via `{ctx.prefix}cc remove {command}`"
             )
         self.guilds.add(ctx.guild.id)
         if ctx.guild.id in self.cache:
@@ -140,33 +142,31 @@ class CustomCommands(commands.Cog):
         """ Deletes a custom command """
         if not self.bot.attrs.is_moderator(ctx.author):
             return await ctx.send("You need to be a moderator to manage custom commands")
-        async with self.bot.utils.cursor() as cur:
-            if not command:
+        if not command:
+            async with self.bot.utils.cursor() as cur:
                 await cur.execute(
                     "select command from cc where guild_id = %s;", (ctx.guild.id,)
                 )
-                if not cur.rowcount:
-                    return await ctx.send("This server has no custom commands")
                 results = [result[0] for result in await cur.fetchall()]
-                choices = await GetChoice(ctx, results, limit=len(results))
-                for choice in choices:
-                    await cur.execute(
-                        "delete from cc where guild_id = %s and command = %s;",
-                        (ctx.guild.id, choice),
-                    )
-                    await ctx.send(f"Removed `{choice}`")
-            else:
+            if not results:
+                return await ctx.send("This server has no custom commands")
+            choices = await GetChoice(ctx, results, limit=len(results))
+        else:
+            async with self.bot.utils.cursor() as cur:
                 await cur.execute(
                     "select * from cc where guild_id = %s and command = %s;",
                     (ctx.guild.id, command),
                 )
-                if not cur.rowcount:
-                    return await ctx.send(f"`{command}` isn't registered as a custom command")
-                await cur.execute(
+                exists = bool(cur.rowcount)
+            if not exists:
+                return await ctx.send(f"`{command}` isn't registered as a custom command")
+            choices = [command]
+        async with self.bot.utils.cursor() as cur:
+            if choices:
+                await cur.executemany(
                     "delete from cc where guild_id = %s and command = %s;",
-                    (ctx.guild.id, command),
+                    [(ctx.guild.id, choice) for choice in choices],
                 )
-                await ctx.send(f"Removed `{command}`")
             await cur.execute(
                 "select 1 from cc where guild_id = %s limit 1;",
                 (ctx.guild.id,),
@@ -177,6 +177,8 @@ class CustomCommands(commands.Cog):
                 self.guilds.discard(ctx.guild.id)
         if ctx.guild.id in self.cache:
             del self.cache[ctx.guild.id]
+        for choice in choices:
+            await ctx.send(f"Removed `{choice}`")
 
     def ensure_cached(self, guild: Guild) -> None:
         """ Shortcut for ensuring the guild_id key exists """
@@ -222,7 +224,8 @@ class CustomCommands(commands.Cog):
         if command in self.cache[msg.guild.id]:
             response = self.cache[msg.guild.id][command][0]
             if response:
-                return await self.process_command(msg, command, response)
+                await self.process_command(msg, command, response)
+            return
 
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
@@ -230,15 +233,12 @@ class CustomCommands(commands.Cog):
                 "and command = %s limit 1;",
                 (msg.guild.id, command),
             )
-            if cur.rowcount:
-                response, *_ = await cur.fetchone()  # type: str
-                self.ensure_cached(msg.guild)
-                self.cache[msg.guild.id][command] = [response, time()]
-                if response:
-                    await self.process_command(msg, command, response)
-            else:
-                self.ensure_cached(msg.guild)
-                self.cache[msg.guild.id][command] = [None, time()]
+            row = await cur.fetchone()
+        response = row[0] if row else None
+        self.ensure_cached(msg.guild)
+        self.cache[msg.guild.id][command] = [response, time()]
+        if response:
+            await self.process_command(msg, command, response)
 
 
 class View(ui.View):

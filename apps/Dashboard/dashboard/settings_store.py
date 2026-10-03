@@ -422,15 +422,14 @@ class BotSettingsStore:
             "prefix": prefix["value"],
             "override": not prefix["allow_personal"],
         }
-        await self.bot.aio_mongo["GuildPrefixes"].update_one(
-            {"_id": guild_id}, {"$set": prefix_config}, upsert=True
-        )
-        self.bot.guild_prefixes[guild_id] = prefix_config
+        from botutils.prefixes import save_prefix
+
+        await save_prefix(self.bot, "GuildPrefixes", guild_id, prefix_config)
 
         ranking = await ranking_cog.config[guild_id]
         ranking.clear()
         ranking.update(deepcopy(settings["ranking"]))
-        await ranking.save()
+        await ranking.save(manual=False)
 
         messages_cog.config[guild_id] = messages
         await messages_cog.config.flush()

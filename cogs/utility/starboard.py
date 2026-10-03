@@ -134,7 +134,7 @@ class Starboard(commands.Cog):
             or old.get("emoji_key") != active[board_id].get("emoji_key")
         }
         if stale_ids:
-            posts = deepcopy(self.posts.get(guild.id, {}))
+            posts = self.posts.get(guild.id, {})
             posts = {
                 key: value
                 for key, value in posts.items()
@@ -270,10 +270,14 @@ class Starboard(commands.Cog):
     def _post_key(board_id: str, message_id: int) -> str:
         return f"{board_id}:{message_id}"
 
-    async def _reaction_count(self, message: discord.Message, key: str) -> int:
+    async def _reaction_count(self, message: discord.Message, key: str, *, minimum: int = 0) -> int:
         for reaction in message.reactions:
             if emoji_key(reaction.emoji) != key:
                 continue
+            # The total (including bots/self) is an upper bound on eligible
+            # votes. Below threshold, no reactor pagination is necessary.
+            if reaction.count < minimum:
+                return reaction.count
             count = 0
             async for user in reaction.users(limit=None):
                 if not user.bot and user.id != message.author.id:
@@ -316,10 +320,9 @@ class Starboard(commands.Cog):
         source_is_nsfw = getattr(message.channel, "is_nsfw", lambda: False)()
         if source_is_nsfw and not destination.is_nsfw():
             return
-        count = await self._reaction_count(message, board["emoji_key"])
+        count = await self._reaction_count(message, board["emoji_key"], minimum=int(board["threshold"]))
         key = self._post_key(board["board_id"], message.id)
-        posts = deepcopy(self.posts.get(message.guild.id, {}))
-        saved = posts.get(key)
+        saved = self.posts.get(message.guild.id, {}).get(key)
         output = None
         if saved:
             saved_channel = message.guild.get_channel(int(saved.get("destination_channel_id", 0)))
@@ -331,6 +334,7 @@ class Starboard(commands.Cog):
             if output:
                 with suppress(discord.NotFound, discord.Forbidden, discord.HTTPException):
                     await output.delete()
+            posts = self.posts.get(message.guild.id, {})
             if key in posts:
                 posts.pop(key, None)
                 self.posts[message.guild.id] = posts
@@ -347,6 +351,9 @@ class Starboard(commands.Cog):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
+        # Other source messages can finish their Discord requests while this
+        # one waits. Update only our entry in the current mapping.
+        posts = self.posts.get(message.guild.id, {})
         posts[key] = {
             "source_channel_id": message.channel.id,
             "destination_channel_id": destination.id,
@@ -420,13 +427,16 @@ class Starboard(commands.Cog):
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
         if not payload.guild_id:
             return
-        posts = deepcopy(self.posts.get(payload.guild_id, {}))
+        posts = self.posts.get(payload.guild_id, {})
         changed = False
         guild = self.bot.get_guild(payload.guild_id)
         for key, saved in list(posts.items()):
             if int(saved.get("post_message_id", 0)) == payload.message_id:
-                posts.pop(key, None)
-                changed = True
+                current = self.posts.get(payload.guild_id, {})
+                if current.get(key) == saved:
+                    current.pop(key, None)
+                    self.posts[payload.guild_id] = current
+                    changed = True
                 continue
             if not key.endswith(f":{payload.message_id}"):
                 continue
@@ -435,10 +445,12 @@ class Starboard(commands.Cog):
                 with suppress(discord.NotFound, discord.Forbidden, discord.HTTPException):
                     output = await destination.fetch_message(int(saved["post_message_id"]))
                     await output.delete()
-            posts.pop(key, None)
-            changed = True
+            current = self.posts.get(payload.guild_id, {})
+            if current.get(key) == saved:
+                current.pop(key, None)
+                self.posts[payload.guild_id] = current
+                changed = True
         if changed:
-            self.posts[payload.guild_id] = posts
             await self.posts.flush()
 
 

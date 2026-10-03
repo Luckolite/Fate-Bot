@@ -21,6 +21,7 @@ from discord import ui, SelectOption, Interaction, User
 from discord.ext import commands, tasks
 
 import botutils
+from botutils.prefixes import save_prefix
 from botutils import colors, get_prefixes_async, emojis, Conversation, \
     url_from, format_date, sanitize, Cooldown, GetChoice
 
@@ -75,20 +76,8 @@ class Core(commands.Cog):
         self.last = {}
         self.spam_cd = {}
 
-        # if not hasattr(bot, "get_privacy"):
-        async def get_privacy(user: Union[discord.User, discord.Member], item: str):
-            async with self.bot.utils.cursor() as cur:
-                await cur.execute(
-                    "select value from privacy where user_id = %s "
-                    "and item = %s limit 1;",
-                    (user.id, item)
-                )
-                if cur.rowcount:
-                    value, = await cur.fetchone()
-                else:
-                    value = default_privacy_settings[item]
-                return value
-        bot.get_privacy = get_privacy
+        self.privacy_reads = {}
+        bot.get_privacy = self.get_privacy
 
         self.config = bot.utils.cache("disabled")
         self.join_dates = {
@@ -100,6 +89,36 @@ class Core(commands.Cog):
         self.ignored_until: Dict[int, float] = {}
         self.owned_ignored_locations: Set[int] = set()
         self.rate_limit_cleanup_task.start()
+
+    async def _read_privacy(self, user_id):
+        async with self.bot.utils.cursor() as cur:
+            await cur.execute(
+                "select item, value from privacy where user_id = %s;",
+                (user_id,),
+            )
+            return dict(await cur.fetchall())
+
+    async def get_privacy(self, user: Union[discord.User, discord.Member], item: str):
+        # Share only in-flight reads. Sequential events still see current DB
+        # settings without introducing a stale privacy preference cache.
+        task = self.privacy_reads.get(user.id)
+        if task is None:
+            task = asyncio.create_task(self._read_privacy(user.id))
+            self.privacy_reads[user.id] = task
+
+            def completed(done):
+                if self.privacy_reads.get(user.id) is done:
+                    self.privacy_reads.pop(user.id, None)
+                if not done.cancelled():
+                    done.exception()
+
+            task.add_done_callback(completed)
+        try:
+            values = await asyncio.shield(task)
+            return values[item] if item in values else default_privacy_settings[item]
+        finally:
+            if task.done() and self.privacy_reads.get(user.id) is task:
+                self.privacy_reads.pop(user.id, None)
 
     async def cog_unload(self):
         self.rate_limit_cleanup_task.cancel()
@@ -212,12 +231,13 @@ class Core(commands.Cog):
 
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
-                "select * from blocked where user_id in (%s, %s);",
+                "select 1 from blocked where user_id in (%s, %s) limit 1;",
                 (guild.owner.id, guild.id),
             )
-            if cur.rowcount:
-                await guild.leave()
-                return self.bot.log(f"Left {guild} due to the server being blacklisted")
+            blocked = bool(cur.rowcount)
+        if blocked:
+            await guild.leave()
+            return self.bot.log(f"Left {guild} due to the server being blacklisted")
 
         sent_join_message = False
         for channel in guild.text_channels:
@@ -415,28 +435,14 @@ class Core(commands.Cog):
         override = True if choice == "no" else False
         if ctx.guild.id in self.bot.guild_prefixes:
             if not override and prefix == ".":
-                await self.bot.aio_mongo["GuildPrefixes"].delete_one({
-                    "_id": ctx.guild.id
-                })
-                del self.bot.guild_prefixes[ctx.guild.id]
+                await save_prefix(self.bot, "GuildPrefixes", ctx.guild.id, None)
                 return await ctx.send("Reset the prefix to default")
-            else:
-                await self.bot.aio_mongo["GuildPrefixes"].update_one(
-                    filter={"_id": ctx.guild.id},
-                    update={"$set": {"prefix": prefix, "override": override}}
-                )
         else:
             if not override and prefix == ".":
                 return await ctx.send("tHaT's tHe sAmE aS thE cuRreNt cOnfiG")
-            await self.bot.aio_mongo["GuildPrefixes"].insert_one({
-                "_id": ctx.guild.id,
-                "prefix": prefix,
-                "override": override
-            })
-        self.bot.guild_prefixes[ctx.guild.id] = {
-            "prefix": prefix,
-            "override": override
-        }
+        await save_prefix(self.bot, "GuildPrefixes", ctx.guild.id, {
+            "prefix": prefix, "override": override,
+        })
         await ctx.send(f"Changed the servers prefix to `{prefix}`")
 
     @commands.hybrid_command(name="personal-prefix", aliases=["pp"], description="Sets a different prefix for only you")
@@ -447,17 +453,7 @@ class Core(commands.Cog):
         prefix = prefix.strip("'\"")
         if len(prefix) > 8:
             return await ctx.send("Your prefix can't be more than 8 chars long")
-        if ctx.author.id in self.bot.user_prefixes:
-            await self.bot.aio_mongo["UserPrefixes"].update_one(
-                filter={"_id": ctx.author.id},
-                update={"$set": {"prefix": prefix}}
-            )
-        else:
-            await self.bot.aio_mongo["UserPrefixes"].insert_one({
-                "_id": ctx.author.id,
-                "prefix": prefix
-            })
-        self.bot.user_prefixes[ctx.author.id] = {"prefix": prefix}
+        await save_prefix(self.bot, "UserPrefixes", ctx.author.id, {"prefix": prefix})
         nothing = "something that doesn't exist"
         await ctx.send(
             f"Set your personal prefix as `{prefix if prefix else nothing}`\n"
@@ -777,7 +773,7 @@ class Core(commands.Cog):
     async def privacy(self, ctx):
         options = copy(default_privacy_settings)
         async with self.bot.utils.cursor() as cur:
-            await cur.execute("select item, value from privacy where user_id = %s;", (ctx.author.id))
+            await cur.execute("select item, value from privacy where user_id = %s;", (ctx.author.id,))
             if cur.rowcount:
                 for item, value in await cur.fetchall():
                     options[item] = value
@@ -786,33 +782,20 @@ class Core(commands.Cog):
         msg = await ctx.send("Set your privacy settings", view=view)
         await view.wait(msg)
 
-        async with self.bot.utils.cursor() as cur:
-            for item, value in view.result.items():
-                if value == default_privacy_settings[item]:
-                    await cur.execute(
-                        "delete from privacy"
-                        " where user_id = %s"
-                        " and item = %s",
-                        (ctx.author.id, item)
+        changes = {item: value for item, value in view.result.items() if value != original[item]}
+        if changes:
+            defaults = [(ctx.author.id, item) for item, value in changes.items() if value == default_privacy_settings[item]]
+            overrides = [(ctx.author.id, item, value) for item, value in changes.items() if value != default_privacy_settings[item]]
+            async with self.bot.utils.cursor() as cur:
+                if defaults:
+                    await cur.executemany(
+                        "delete from privacy where user_id = %s and item = %s;", defaults,
                     )
-                else:
-                    await cur.execute(
-                        "select * from privacy where user_id = %s "
-                        "and item = %s limit 1;",
-                        (ctx.author.id, item),
+                if overrides:
+                    await cur.executemany(
+                        "insert into privacy (user_id, item, value) values (%s, %s, %s) "
+                        "on duplicate key update value = values(value);", overrides,
                     )
-                    if cur.rowcount:
-                        await cur.execute(
-                            "update privacy set value = %s "
-                            "where user_id = %s and item = %s",
-                            (value, ctx.author.id, item)
-                        )
-                    else:
-                        await cur.execute(
-                            "insert into privacy values (%s, %s, %s);",
-                            (ctx.author.id, item, value)
-                        )
-        if original != view.result:
             await ctx.reply(f"Updated your privacy settings")
 
 

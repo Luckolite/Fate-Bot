@@ -544,4 +544,17 @@ async def get_role(ctx, name) -> Optional[discord.Role]:
 async def update_msg(msg, new) -> discord.Message:
     if len(msg.content) + len(new) + 2 >= 2000:
         msg = await msg.channel.send("Uploading emoji(s)")
-    return await msg.edit(content=f"{msg.content}\n{new}")
+    content = f"{msg.content}\n{new}"
+    try:
+        return await msg.edit(content=content)
+    except discord.HTTPException as exc:
+        # Long emoji uploads can outlive the interaction's webhook token.
+        # Public responses can still be edited through the bot-token endpoint.
+        if (
+            exc.code != 50027
+            or not isinstance(msg, (discord.InteractionMessage, discord.WebhookMessage))
+            or msg.flags.ephemeral
+        ):
+            raise
+        message = await msg.channel.fetch_message(msg.id)
+        return await message.edit(content=content)
