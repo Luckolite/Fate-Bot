@@ -33,6 +33,7 @@ from discord.ext.commands import Context
 from botutils import colors, bytes2human, get_time, emojis, extract_time, \
     get_prefixes_async, format_date, sanitize, GetChoice, AuthorView, Cooldown, Menu, \
     findall
+from botutils.resources import delete_in_batches
 
 
 def resolve_audit_action(name: str):
@@ -87,7 +88,6 @@ class Utility(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.settings = bot.utils.cache("settings", auto_sync=True)
         self.find = {}
         self.afk = {}
         self.timer_path = "./data/userdata/timers.json"
@@ -124,29 +124,34 @@ class Utility(commands.Cog):
         else:
             self.bot.log.critical("Can't connect to the DB to cleanup invites")
             return
-        lmt = time() + 60 * 60 * 24 * 30
-        set_to_remove = 0
-        async with self.bot.utils.cursor() as cur:
-            # Invites
-            await cur.execute("select * from invites where created_at > %s;", (lmt,))
-            set_to_remove += cur.rowcount
-            await cur.execute("select * from invites where deleted_at > %s;", (lmt,))
-            set_to_remove += cur.rowcount
-            if set_to_remove:
-                self.bot.log.info(f"Removing {set_to_remove} old invites")
-            await cur.execute("delete from invites where created_at > %s;", (lmt,))
-            await cur.execute("delete from invites where deleted_at > %s;", (lmt,))
+        await self._cleanup_history()
 
-            # Usernames
-            lmt = 60 * 60 * 24 * 30
-            await cur.execute("delete from usernames where changed_at > %s;", (lmt,))
-
-            # Activity
-            lmt = 60 * 60 * 24 * 365
-            await cur.execute(
-                "delete from activity where last_online > %s and last_message > %s;",
-                (lmt, lmt),
+    async def _cleanup_history(self):
+        now = time()
+        cutoff = now - 60 * 60 * 24 * 30
+        removed = 0
+        for column in ("created_at", "deleted_at"):
+            removed += await delete_in_batches(
+                self.bot, f"delete from invites where {column} < %s limit 5000;", (cutoff,),
             )
+        if removed:
+            self.bot.log.info(f"Removed {removed} old invites")
+        await delete_in_batches(
+            self.bot, "delete from usernames where changed_at < %s limit 5000;", (cutoff,),
+        )
+        cutoff = now - 60 * 60 * 24 * 365
+        # Older installations contain both epoch strings and date strings.
+        # Only expire values we can compare safely; preserve unknown formats.
+        await delete_in_batches(
+            self.bot,
+            "delete from activity where "
+            "(last_online is null or (last_online regexp '^[0-9]+([.][0-9]+)?$' "
+            "and cast(last_online as decimal(20,6)) < %s)) and "
+            "(last_message is null or (last_message regexp '^[0-9]+([.][0-9]+)?$' "
+            "and cast(last_message as decimal(20,6)) < %s)) and "
+            "(last_online is not null or last_message is not null) limit 5000;",
+            (cutoff, cutoff),
+        )
 
     async def save_timers(self):
         await self.bot.utils.save_json(self.timer_path, self.timers)
@@ -308,6 +313,26 @@ class Utility(commands.Cog):
         info = self.collect_invite_info(invite)
         now = time()
         async with self.bot.utils.cursor() as cur:
+            if info["guild_id"] is not None:
+                await cur.execute(
+                    "insert into invites "
+                    "(code, guild_id, guild_name, channel_id, channel_name, inviter, uses, created_at, deleted_at) "
+                    "values (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "on duplicate key update "
+                    "guild_id = coalesce(values(guild_id), guild_id), "
+                    "guild_name = coalesce(values(guild_name), guild_name), "
+                    "channel_id = coalesce(values(channel_id), channel_id), "
+                    "channel_name = coalesce(values(channel_name), channel_name), "
+                    "inviter = coalesce(values(inviter), inviter), "
+                    "uses = case when uses is null then 0 "
+                    "when values(uses) is not null and values(uses) > uses then values(uses) else uses end, "
+                    "created_at = coalesce(created_at, values(created_at));",
+                    (info["code"], info["guild_id"], info["guild_name"], info["channel_id"],
+                     info["channel_name"], info["inviter"], info["uses"], now, None),
+                )
+                return
+            # An incomplete invite may refresh an existing row even when the
+            # schema requires a guild ID on inserts. Keep that fallback.
             await cur.execute("select * from invites where code = %s limit 1;", (info["code"],))
             if cur.rowcount:
                 await cur.execute(
@@ -367,10 +392,11 @@ class Utility(commands.Cog):
 
         # Keep track of their last message time
         if await self.bot.get_privacy(msg.author, "activity_info"):
+            now = time()
             await self.bot.execute(
                 "insert into activity values (%s, null, %s) "
                 "on duplicate key update last_message = %s;",
-                (msg.author.id, datetime.now(tz=timezone.utc), time()),
+                (msg.author.id, now, now),
             )
 
         # Check for invites and log their current state
@@ -422,7 +448,7 @@ class Utility(commands.Cog):
             if await self.bot.get_privacy(after, "username_history"):
                 async with self.bot.utils.cursor() as cur:
                     await cur.execute(
-                        "select * from usernames where user_id = %s and username = %s;",
+                        "select 1 from usernames where user_id = %s and username = %s limit 1;",
                         (after.id, self.bot.encode(str(before))),
                     )
                     if not cur.rowcount:
@@ -436,10 +462,11 @@ class Utility(commands.Cog):
         if before.status != after.status and await self.bot.get_privacy(after, "activity_info"):
             status = discord.Status
             if before.status != status.offline and after.status == status.offline:
+                now = time()
                 await self.bot.execute(
                     "insert into activity values (%s, %s, null) "
                     "on duplicate key update last_online = %s;",
-                    (before.id, datetime.now(tz=timezone.utc), time()),
+                    (before.id, now, now),
                 )
 
     @commands.Cog.listener()
@@ -1564,8 +1591,12 @@ class InfoView(AuthorView):
         embed.add_field(name="🪪 Account", value="\n".join(account_lines), inline=True)
 
         guilds = list(getattr(user, "mutual_guilds", []))
+        privacy_items = ("nicks", "activity_info", "username_history")
+        privacy = dict(zip(privacy_items, await asyncio.gather(
+            *(self.bot.get_privacy(user, item) for item in privacy_items)
+        )))
         nicknames: List[str] = []
-        if await self.bot.get_privacy(user, "nicks") and user.id != self.bot.user.id:
+        if privacy["nicks"] and user.id != self.bot.user.id:
             for guild in guilds:
                 member = guild.get_member(user.id)
                 if member and member.display_name not in {user.display_name, *nicknames}:
@@ -1671,7 +1702,7 @@ class InfoView(AuthorView):
             history_lines.append(f"**Shared servers**  {len(guilds):,}")
         if nicknames:
             history_lines.append(f"**Known nicknames**  {_compact_list(nicknames, 5)}")
-        if await self.bot.get_privacy(user, "activity_info"):
+        if privacy["activity_info"]:
             async with self.bot.utils.cursor() as cur:
                 await cur.execute(
                     "select last_online, last_message from activity where user_id = %s limit 1;",
@@ -1688,7 +1719,7 @@ class InfoView(AuthorView):
                         continue
                     history_lines.append(f"**{label}**  {get_time(elapsed)} ago")
 
-        if await self.bot.get_privacy(user, "username_history"):
+        if privacy["username_history"]:
             async with self.bot.utils.cursor() as cur:
                 await cur.execute(
                     "select username from usernames where user_id = %s order by changed_at desc;",
@@ -1931,17 +1962,17 @@ class InfoView(AuthorView):
                     "from invites where code = %s;",
                     (self.bot.encode(code),),
                 )
-                if not cur.rowcount:
-                    await self.ctx.send("Failed to query that invite")
-                    raise StopIteration()
                 results = await cur.fetchone()
-                data = {
-                    "guild_name": self.bot.decode(results[1]),
-                    "guild_id": results[0],
-                    "channel_name": self.bot.decode(results[3]),
-                    "channel_id": results[2],
-                }
-                e.set_footer(text="⚠ From Cache ⚠")
+            if not results:
+                await self.ctx.send("Failed to query that invite")
+                return
+            data = {
+                "guild_name": self.bot.decode(results[1]),
+                "guild_id": results[0],
+                "channel_name": self.bot.decode(results[3]),
+                "channel_id": results[2],
+            }
+            e.set_footer(text="⚠ From Cache ⚠")
 
         inviters = []
 

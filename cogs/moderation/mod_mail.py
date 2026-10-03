@@ -156,45 +156,44 @@ class ModMail(commands.Cog):
                 "where guild_id = %s and case_number = %s;",
                 (ctx.guild.id, case_number),
             )
-            if result := await cur.fetchone():
-                user_id = result[0]
-            else:
-                await ctx.send("Can't find the case for this thread")
-                return None
-            user = self.bot.get_user(user_id)
-            if not user:
-                await ctx.message.channel.send(
-                    f"I no longer share any servers with this user, therefore cannot dm them"
-                )
-                return None
-
-            e = Embed(color=self.bot.config["theme_color"])
-            e.set_author(
-                name=f"Case #{case_number}",
-                icon_url=ctx.guild.icon.url if ctx.guild.icon else None,
+            result = await cur.fetchone()
+        if not result:
+            await ctx.send("Can't find the case for this thread")
+            return None
+        user = self.bot.get_user(result[0])
+        if not user:
+            await ctx.message.channel.send(
+                f"I no longer share any servers with this user, therefore cannot dm them"
             )
-            e.description = f"Reply from {ctx.message.author} in {ctx.guild}"
-            if ctx.message.content:
-                e.add_field(
-                    name="◈ Message",
-                    value=ctx.message.content[:1024],
-                    inline=False
-                )
-            if ctx.message.attachments:
-                e.set_image(url=ctx.message.attachments[0].url)
-            e.set_footer(text=f"Use .reply {case_number} to make a reply")
-            try:
-                await user.send(embed=e)
-            except Forbidden:
-                await ctx.message.channel.send(
-                    "Failed to reply to the user. Either their dms are closed "
-                    "or I no longer share any servers with them"
-                )
-            else:
-                e.set_footer(text=f"Use .reply to respond again")
-                await ctx.send(embed=e)
-                if not ctx.message.attachments:
-                    await ctx.message.delete()
+            return None
+
+        e = Embed(color=self.bot.config["theme_color"])
+        e.set_author(
+            name=f"Case #{case_number}",
+            icon_url=ctx.guild.icon.url if ctx.guild.icon else None,
+        )
+        e.description = f"Reply from {ctx.message.author} in {ctx.guild}"
+        if ctx.message.content:
+            e.add_field(
+                name="◈ Message",
+                value=ctx.message.content[:1024],
+                inline=False
+            )
+        if ctx.message.attachments:
+            e.set_image(url=ctx.message.attachments[0].url)
+        e.set_footer(text=f"Use .reply {case_number} to make a reply")
+        try:
+            await user.send(embed=e)
+        except Forbidden:
+            await ctx.message.channel.send(
+                "Failed to reply to the user. Either their dms are closed "
+                "or I no longer share any servers with them"
+            )
+        else:
+            e.set_footer(text=f"Use .reply to respond again")
+            await ctx.send(embed=e)
+            if not ctx.message.attachments:
+                await ctx.message.delete()
 
     @commands.command(name="reply", aliases=["appeal"], description="Appeals, or replies to a case number")
     @commands.cooldown(1, 15, commands.BucketType.user)
@@ -229,14 +228,15 @@ class ModMail(commands.Cog):
                 await cur.execute(
                     "select guild_id, case_number, case_action, reason, link, created_at "
                     "from cases where case_number = %s and user_id = %s limit 1;",
-                    (case_number, ctx.author.id),
+                    (case_number, str(ctx.author.id)),
                 )
                 results = await cur.fetchall()
             else:
                 await cur.execute(
                     "select guild_id, case_number, case_action, reason, link, created_at "
-                    "from cases where user_id = %s and created_at > %s;",
-                    (ctx.author.id, time() - 60 * 60 * 24 * 14),
+                    "from cases where user_id = %s and created_at > %s "
+                    "order by cast(link as binary) limit 5;",
+                    (str(ctx.author.id), time() - 60 * 60 * 24 * 14),
                 )
                 results = await cur.fetchall()
 

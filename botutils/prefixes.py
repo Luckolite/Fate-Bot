@@ -8,8 +8,43 @@ Contains the functions relative to parsing the bot prefix
 :license: Proprietary, see LICENSE for details
 """
 
+import asyncio
+from weakref import WeakValueDictionary
+
 import discord
 from discord.ext import commands
+
+
+async def save_prefix(bot, collection, key, values):
+    """Persist a prefix once, then update its authoritative runtime mapping."""
+    values = dict(values) if values is not None else None
+    mapping = bot.guild_prefixes if collection == "GuildPrefixes" else bot.user_prefixes
+    locks = getattr(bot, "_prefix_write_locks", None)
+    if locks is None:
+        locks = bot._prefix_write_locks = WeakValueDictionary()
+    uncertain = getattr(bot, "_prefix_uncertain_writes", None)
+    if uncertain is None:
+        uncertain = bot._prefix_uncertain_writes = set()
+    identity = (collection, key)
+    lock = locks.setdefault(identity, asyncio.Lock())
+    async with lock:
+        if values is None:
+            if key not in mapping and identity not in uncertain:
+                return False
+            uncertain.add(identity)
+            await bot.aio_mongo[collection].delete_one({"_id": key})
+            mapping.pop(key, None)
+            uncertain.discard(identity)
+            return True
+        if mapping.get(key) == values and identity not in uncertain:
+            return False
+        uncertain.add(identity)
+        await bot.aio_mongo[collection].update_one(
+            {"_id": key}, {"$set": values}, upsert=True,
+        )
+        mapping[key] = dict(values)
+        uncertain.discard(identity)
+        return True
 
 
 def get_prefix(_ctx):

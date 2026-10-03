@@ -82,6 +82,13 @@ class Welcome(commands.Cog):
         self.global_cd = Cooldown(3, 5)
         self.msgs = {}
 
+    def remember_message(self, guild_id, member_id, message):
+        # Departures only need the edit address and original text, not the
+        # message's embeds, attachments, author, or other gateway payloads.
+        self.msgs[guild_id][member_id] = (
+            message.channel.id, message.id, message.content
+        )
+
     def is_enabled(self, guild_id):
         return guild_id in self.config
 
@@ -436,7 +443,8 @@ class Welcome(commands.Cog):
                     if conf["images"]:
                         e.set_image(url=random.choice(conf["images"]))
                         try:
-                            self.msgs[guild_id][member.id] = await channel.send(msg, embed=e, allowed_mentions=mentions)
+                            sent = await channel.send(msg, embed=e, allowed_mentions=mentions)
+                            self.remember_message(guild_id, member.id, sent)
                             self.record_activity()
                             return
                         except discord.errors.Forbidden:
@@ -449,12 +457,13 @@ class Welcome(commands.Cog):
                     )
                     e.set_image(url="attachment://" + os.path.basename(path))
                     try:
-                        self.msgs[guild_id][member.id] = await channel.send(
+                        sent = await channel.send(
                             msg,
                             file=discord.File(path, filename=os.path.basename(path)),
                             embed=e,
                             allowed_mentions=mentions,
                         )
+                        self.remember_message(guild_id, member.id, sent)
                         self.record_activity()
                         return
                     except discord.errors.Forbidden:
@@ -463,7 +472,8 @@ class Welcome(commands.Cog):
 
                 # Send without images
                 try:
-                    self.msgs[guild_id][member.id] = await channel.send(msg, allowed_mentions=mentions)
+                    sent = await channel.send(msg, allowed_mentions=mentions)
+                    self.remember_message(guild_id, member.id, sent)
                     self.record_activity()
                 except discord.errors.Forbidden:
                     self.config[guild_id]["enabled"] = False
@@ -472,11 +482,18 @@ class Welcome(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member):
         guild_id = member.guild.id
-        if guild_id in self.msgs and member.id in self.msgs[guild_id]:
+        messages = self.msgs.get(guild_id)
+        if messages and (snapshot := messages.pop(member.id, None)):
+            if not messages:
+                self.msgs.pop(guild_id, None)
+            channel_id, message_id, content = snapshot
             with suppress(discord.errors.NotFound, discord.errors.Forbidden):
-                msg = self.msgs[guild_id][member.id]
-                await msg.edit(content=f"~~{msg.content}~~")
-                self.msgs[guild_id].pop(member.id, None)
+                channel = self.bot.get_partial_messageable(channel_id, guild_id=guild_id)
+                await channel.get_partial_message(message_id).edit(content=f"~~{content}~~")
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        self.msgs.pop(guild.id, None)
 
 
 async def setup(bot):

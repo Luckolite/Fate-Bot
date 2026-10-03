@@ -55,7 +55,6 @@ class Tasks(commands.Cog):
             self.cog_cleanup,
             self.log_queue,
             self.auto_backup,
-            self.cleanup_pool,
             self.warn_if_storage_full,
             self.debug_log,
             self.blacklist
@@ -98,26 +97,36 @@ class Tasks(commands.Cog):
         # Clean the filtered messages index by only keeping recent deletes
         if not hasattr(self.bot, "filtered_messages"):
             self.bot.filtered_messages = {}
-        objects_removed = 0
+        now = time.time()
+        cutoff = now - 1800
         for guild_id, msgs in list(self.bot.filtered_messages.items()):
             await asyncio.sleep(0)
-            for msg_id, deleted_at in list(msgs.items()):
-                await asyncio.sleep(0)
-                if time.time() - 1800 > deleted_at:
-                    del self.bot.filtered_messages[guild_id][msg_id]
-                    objects_removed += 1
-            if not self.bot.filtered_messages[guild_id]:
-                del self.bot.filtered_messages[guild_id]
-                objects_removed += 1
+            for index, (msg_id, deleted_at) in enumerate(list(msgs.items())):
+                if index and index % 128 == 0:
+                    await asyncio.sleep(0)
+                if deleted_at < cutoff and msgs.get(msg_id) == deleted_at:
+                    msgs.pop(msg_id, None)
+            if not msgs and self.bot.filtered_messages.get(guild_id) is msgs:
+                self.bot.filtered_messages.pop(guild_id, None)
 
-        for cog in list(self.bot.cogs.keys()):
-            for attr_name in dir(cog):
-                await asyncio.sleep(0)
-                attr = getattr(cog, attr_name)
+        # Inspect cog instances, not the string keys of bot.cogs. Cooldowns
+        # already throttle their cleanup; avoid yielding for every attribute.
+        for cog in list(self.bot.cogs.values()):
+            for attr in list(vars(cog).values()):
                 if isinstance(attr, Cooldown):
-                    count = len(attr.index)
-                    attr.cleanup()
-                    objects_removed += count
+                    attr._cleanup(now)
+            cleanup = getattr(cog, "cleanup_runtime_state", None)
+            if cleanup is not None:
+                await cleanup(now)
+
+        # discord.py otherwise expires command buckets only when that command
+        # is used again. Rarely used commands should not retain idle user IDs.
+        seen = set()
+        for command in getattr(self.bot, "walk_commands", lambda: ())():
+            mapping = command._buckets
+            if id(mapping) not in seen:
+                seen.add(id(mapping))
+                mapping._verify_cache_integrity(now)
 
     @tasks.loop(minutes=1)
     async def blacklist(self):
@@ -148,38 +157,6 @@ class Tasks(commands.Cog):
                 f"owner ID: {owner_id}) due to it being blacklisted"
             )
             await guild.leave()
-
-    @tasks.loop(hours=1)
-    async def cleanup_pool(self):
-        if self.bot.pool:
-            await self.bot.pool.clear()
-            self.bot.log.debug("Cleared the pool")
-
-    @tasks.loop(minutes=1)
-    async def prefix_cleanup_task(self):
-        uncached = 0
-        for guild_id, data in list(self.bot.guild_prefixes.items()):
-            await asyncio.sleep(0)
-            if isinstance(data, float):
-                last_used = data
-            else:
-                last_used = data[1]
-            if last_used > time.time() - 60 * 60:
-                del self.bot.guild_prefixes[guild_id]
-                uncached += 1
-        self.bot.log.debug(f"Removed {uncached} unused prefixes from guild cache")
-        uncached = 0
-
-        for user_id, data in list(self.bot.user_prefixes.items()):
-            await asyncio.sleep(0)
-            if isinstance(data, float):
-                last_used = data
-            else:
-                last_used = data["last_used"]
-            if last_used > time.time() - 60 * 60:
-                del self.bot.user_prefixes[user_id]
-                uncached += 1
-        self.bot.log.debug(f"Removed {uncached} unused prefixes from guild cache")
 
     @tasks.loop()
     async def status_task(self):

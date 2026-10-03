@@ -10,14 +10,17 @@ A module for querying and caching data from MongoDB in a simple to use dictionar
 
 import asyncio
 from copy import deepcopy
+from itertools import islice
 from time import time
 from typing import Any, AsyncGenerator, Dict, Generator, Optional, Union
 
 from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo import ReplaceOne
 
 Key = Union[int, str]
 CACHE_TTL = 10
 CLEANUP_INTERVAL = 10
+FLUSH_BATCH_SIZE = 128
 
 
 def _document_copy(value):
@@ -114,7 +117,7 @@ class Cache:
         self.bot.loop.create_task(self.remove(key))
 
     async def keys(self) -> AsyncGenerator:
-        async for document in self._db.find({}):
+        async for document in self._db.find({}, {"_id": 1}):
             yield document["_id"]
 
     async def values(self) -> AsyncGenerator:
@@ -174,14 +177,15 @@ class Cache:
         collection = self.bot.aio_mongo[self.collection]
         async with self._write_lock:
             while self.changes:
-                for key, value in list(self.changes.items()):
-                    replacement = _document_copy(value)
-                    replacement["_id"] = key
-                    await collection.replace_one(
-                        filter={"_id": key},
-                        replacement=replacement,
-                        upsert=True
-                    )
+                batch = list(islice(self.changes.items(), FLUSH_BATCH_SIZE))
+                operations = [
+                    ReplaceOne({"_id": key}, {**_document_copy(value), "_id": key}, upsert=True)
+                    for key, value in batch
+                ]
+                # Replacements are idempotent. On partial/uncertain failure,
+                # retain the batch so a retry can safely apply every document.
+                await collection.bulk_write(operations, ordered=False)
+                for key, value in batch:
                     # A newer value may have arrived while MongoDB yielded.
                     if self.changes.get(key) == value:
                         self.changes.pop(key, None)
@@ -214,7 +218,7 @@ class Get:
         return self.context
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.context.save(manual=True)
+        await self.context.save(manual=False)
         if self.key in self.cache.instances:
             del self.cache.instances[self.key]
 
@@ -270,24 +274,19 @@ class DataContext(dict):
         self.last_update = time()
 
     async def save(self, manual: bool = True):
+        snapshot = _document_copy(self)
+        if not manual and snapshot == self.copy:
+            return
         if self == self._state.default:
             return await self._state.remove(self.key)
         if self.copy and not self.keys():
             self.copy = {}
             return await self._state.remove(self.key)
-        if manual or dict(self) != self.copy:
-            self._state.changes[self.key] = _document_copy(self)
-        else:
-            # Check nested values
-            for key, value in self.items():
-                if value != self.copy[key]:
-                    self._state.changes[self.key] = _document_copy(self)
-                    break
-            else:
-                return
-
+        self._state.changes[self.key] = snapshot
         await self._state.flush()
-        self.copy = await self._state._get(self.key)
+        # Acknowledged replacements persist exactly this snapshot. Reading it
+        # back adds a round trip and can mark an unsaved concurrent edit clean.
+        self.copy = snapshot
 
     async def delete(self):
         """ Delete the whole config """

@@ -29,6 +29,8 @@ from pymysql.err import DataError, InternalError, OperationalError
 from botutils import colors, get_prefix, url_from, Menu, cache_rewrite, GetConfirmation
 from botutils.pillow import add_corners
 from botutils.global_xp_guard import GlobalXPGuard, REASONS
+from botutils.mysql_indexes import ensure_xp_order_index
+from botutils.resources import delete_in_batches
 from checks.exceptions import IgnoredExit
 
 
@@ -154,6 +156,8 @@ class Ranking(commands.Cog):
         self.pending_monthly = {}
         self.pending_commands = {}
         self.flush_lock = asyncio.Lock()
+        self.index_lock = asyncio.Lock()
+        self.index_ready = False
 
         # Configs
         self.config = cache_rewrite.Cache(bot, "ranking", default=self.default_config)
@@ -183,6 +187,22 @@ class Ranking(commands.Cog):
         # Discord waits for cog_load before exposing the cog, so this can be
         # prepared off-loop without a partially initialized command surface.
         self.assets = await asyncio.to_thread(RankCardAssets)
+        if self.bot.is_ready():
+            await self.on_ready()
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        async with self.index_lock:
+            if self.index_ready:
+                return
+            pool = await self.bot.wait_for_pool()
+            try:
+                if await ensure_xp_order_index(pool):
+                    self.bot.log.info("Added the global XP leaderboard index")
+            except Exception as error:
+                self.bot.log.warning(f"Couldn't prepare the global XP leaderboard index: {error}")
+            else:
+                self.index_ready = True
 
     async def cog_unload(self):
         self.cmd_cleanup_task.cancel()
@@ -355,31 +375,22 @@ class Ranking(commands.Cog):
         ).timestamp())
         removed = 0
         try:
-            async with self.bot.utils.cursor() as cur:
-                while True:
-                    await cur.execute(
-                        "delete from commands where ran_at not regexp "
-                        "'^[0-9]+([.][0-9]+)?$' limit 5000;"
-                    )
-                    removed += cur.rowcount
-                    if cur.rowcount < 5000:
-                        break
-                    await asyncio.sleep(0.1)
-                while True:
-                    await cur.execute(
-                        "delete from commands where ran_at < %s limit 5000;",
-                        (cutoff,)
-                    )
-                    removed += cur.rowcount
-                    if cur.rowcount < 5000:
-                        break
-                    await asyncio.sleep(0.1)
+            removed += await self._delete_batches(
+                "delete from commands where ran_at not regexp "
+                "'^[0-9]+([.][0-9]+)?$' limit 5000;"
+            )
+            removed += await self._delete_batches(
+                "delete from commands where ran_at < %s limit 5000;", (cutoff,)
+            )
         except Exception as error:
             self.bot.log(f"Error cleaning up 30-day command usage\n{error}")
         else:
             self.bot.log.debug(
                 f"Removed {removed:,} command usage rows older than 30 days"
             )
+
+    async def _delete_batches(self, query, args=None):
+        return await delete_in_batches(self.bot, query, args)
 
     @tasks.loop(minutes=1)
     async def cooldown_cleanup_task(self):
@@ -437,34 +448,22 @@ class Ranking(commands.Cog):
             await self.bot.wait_until_ready()
         while self.bot.pool is None:
             await asyncio.sleep(5)
-        async with self.bot.utils.cursor() as cur:
-            limit = int(time() - 60 * 60 * 24 * 30)  # One month
-            removed = 0
-            for table, column in (
-                ("monthly_msg", "msg_time"),
-                ("global_monthly", "timeframe"),
-            ):
-                while True:
-                    await cur.execute(
-                        f"delete from {table} where {column} not regexp "
-                        "'^[0-9]+([.][0-9]+)?$' limit 5000;"
-                    )
-                    removed += cur.rowcount
-                    if cur.rowcount < 5000:
-                        break
-                    await asyncio.sleep(0.1)
-                while True:
-                    await cur.execute(
-                        f"delete from {table} where {column} < %s limit 5000;",
-                        (limit,)
-                    )
-                    removed += cur.rowcount
-                    if cur.rowcount < 5000:
-                        break
-                    await asyncio.sleep(0.1)
-            self.bot.log.debug(
-                f"Removed {removed} expired rows from monthly leaderboards"
+        limit = int(time() - 60 * 60 * 24 * 30)  # One month
+        removed = 0
+        for table, column in (
+            ("monthly_msg", "msg_time"),
+            ("global_monthly", "timeframe"),
+        ):
+            removed += await self._delete_batches(
+                f"delete from {table} where {column} not regexp "
+                "'^[0-9]+([.][0-9]+)?$' limit 5000;"
             )
+            removed += await self._delete_batches(
+                f"delete from {table} where {column} < %s limit 5000;", (limit,)
+            )
+        self.bot.log.debug(
+            f"Removed {removed} expired rows from monthly leaderboards"
+        )
         await self.global_guard.cleanup(time())
 
     @commands.command(description="Check your global XP eligibility and temporary pauses")
@@ -1408,58 +1407,84 @@ class Ranking(commands.Cog):
             if cached and cached[0] > monotonic():
                 return cached[1]
 
-            cutoff = int(time() - 60 * 60 * 24 * 30)
-            query = (
-                "select 'guild' as board, user_id, xp from ("
-                "select user_id, xp from msg where guild_id = %s "
-                "order by xp desc limit 256) guild_rows "
+            # Global boards are identical for every guild. Coalesce the first
+            # read and reuse it within the same 30-second freshness window.
+            global_cached = self.leaderboard_cache.get(None)
+            leaderboards = None
+            if not global_cached or global_cached[0] <= monotonic():
+                global_lock = self.leaderboard_locks.setdefault(None, asyncio.Lock())
+                async with global_lock:
+                    global_cached = self.leaderboard_cache.get(None)
+                    if not global_cached or global_cached[0] <= monotonic():
+                        leaderboards = await self._fetch_leaderboards(guild_id, include_global=True)
+                        global_cached = (
+                            monotonic() + self.leaderboard_cache_ttl,
+                            {name: rows for name, rows in leaderboards.items() if name.startswith("Global ")},
+                        )
+                        self.leaderboard_cache[None] = global_cached
+            if leaderboards is None:
+                leaderboards = await self._fetch_leaderboards(guild_id, include_global=False)
+                leaderboards.update(global_cached[1])
+            self.leaderboard_cache[guild_id] = (
+                # Reusing globals must not extend their original TTL.
+                min(monotonic() + self.leaderboard_cache_ttl, global_cached[0]),
+                leaderboards,
+            )
+            return leaderboards
+
+    async def _fetch_leaderboards(self, guild_id, *, include_global):
+        cutoff = int(time() - 60 * 60 * 24 * 30)
+        query = (
+            "select 'guild' as board, user_id, xp from ("
+            "select user_id, xp from msg where guild_id = %s "
+            "order by xp desc limit 256) guild_rows "
+            "union all "
+            "select 'monthly', user_id, total_xp from ("
+            "select user_id, sum(xp) as total_xp from monthly_msg "
+            "where guild_id = %s and msg_time > %s group by user_id "
+            "order by total_xp desc limit 256) monthly_rows "
+        )
+        args = (guild_id, guild_id, cutoff)
+        if include_global:
+            query += (
                 "union all "
                 "select 'global', user_id, xp from ("
                 "select user_id, xp from global_msg "
                 "order by xp desc limit 256) global_rows "
                 "union all "
-                "select 'monthly', user_id, total_xp from ("
-                "select user_id, sum(xp) as total_xp from monthly_msg "
-                "where guild_id = %s and msg_time > %s group by user_id "
-                "order by total_xp desc limit 256) monthly_rows "
-                "union all "
                 "select 'global_monthly', user_id, total_xp from ("
                 "select user_id, sum(xp) as total_xp from global_monthly "
                 "where timeframe > %s group by user_id "
-                "order by total_xp desc limit 256) global_monthly_rows;"
+                "order by total_xp desc limit 256) global_monthly_rows "
             )
-            started_at = monotonic()
-            async with self.bot.utils.cursor() as cur:
-                await cur.execute(query, (guild_id, guild_id, cutoff, cutoff))
-                results = await cur.fetchall()
-            self.bot.log.debug(
-                f"Fetched ranking leaderboards in "
-                f"{round((monotonic() - started_at) * 1000)}ms"
-            )
+            args += (cutoff,)
+        started_at = monotonic()
+        async with self.bot.utils.cursor() as cur:
+            await cur.execute(query + ";", args)
+            results = await cur.fetchall()
+        self.bot.log.debug(
+            f"Fetched ranking leaderboards in "
+            f"{round((monotonic() - started_at) * 1000)}ms"
+        )
 
-            leaderboards = {
-                "Msg Leaderboard": [],
-                "Global Msg Leaderboard": [],
-                "Monthly Msg Leaderboard": [],
-                "Global Monthly Leaderboard": [],
-            }
-            names = {
-                "guild": "Msg Leaderboard",
-                "global": "Global Msg Leaderboard",
-                "monthly": "Monthly Msg Leaderboard",
-                "global_monthly": "Global Monthly Leaderboard",
-            }
-            for board, user_id, xp in results:
-                if isinstance(board, bytes):
-                    board = board.decode()
-                if name := names.get(board):
-                    leaderboards[name].append((user_id, xp))
-
-            self.leaderboard_cache[guild_id] = (
-                monotonic() + self.leaderboard_cache_ttl,
-                leaderboards
-            )
-            return leaderboards
+        leaderboards = {
+            "Msg Leaderboard": [],
+            "Global Msg Leaderboard": [],
+            "Monthly Msg Leaderboard": [],
+            "Global Monthly Leaderboard": [],
+        }
+        names = {
+            "guild": "Msg Leaderboard",
+            "global": "Global Msg Leaderboard",
+            "monthly": "Monthly Msg Leaderboard",
+            "global_monthly": "Global Monthly Leaderboard",
+        }
+        for board, user_id, xp in results:
+            if isinstance(board, bytes):
+                board = board.decode()
+            if name := names.get(board):
+                leaderboards[name].append((user_id, xp))
+        return leaderboards
 
     @commands.command(
         name="leaderboard",

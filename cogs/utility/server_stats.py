@@ -8,7 +8,6 @@ A cog for showing server stats in voice channel names
 :license: Proprietary, see LICENSE for details
 """
 
-import asyncio
 from discord.ext import commands
 import discord
 from fate import Fate
@@ -120,13 +119,12 @@ class ServerStatistics(commands.Cog):
             "bots": 0,
             "boosts": guild.premium_subscription_count
         }
-        for member in list(guild.members):
-            await asyncio.sleep(0)
-            if member.bot:
-                fmts["bots"] += 1
-            else:
-                fmts["members"] += 1
-        for ctype, data in list(self.config[guild.id].items()):
+        configured = self.config.get(guild.id, {})
+        if "members" in configured or "bots" in configured:
+            members = guild.members
+            fmts["bots"] = sum(member.bot for member in members)
+            fmts["members"] = len(members) - fmts["bots"]
+        for ctype, data in list(configured.items()):
             if channel := self.bot.get_channel(data["channel_id"]):
                 fmt = data["format"].replace("{count}", str(fmts[ctype]))
                 if fmt != channel.name:

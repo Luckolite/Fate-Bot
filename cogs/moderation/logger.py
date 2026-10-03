@@ -20,6 +20,7 @@ from os import path
 from time import time, monotonic
 from typing import *
 from uuid import uuid4
+from weakref import WeakValueDictionary
 
 from PIL import Image
 from aiohttp.client_exceptions import ClientOSError, ClientPayloadError
@@ -32,6 +33,7 @@ from discord import (
     File,
 
     Message,
+    PartialMessage,
     User,
     Member,
     Role,
@@ -72,6 +74,7 @@ from botutils import (
     Cooldown,
     emojis,
     format_date,
+    bytes2human,
     s,
     url_from
 )
@@ -881,7 +884,7 @@ class Logger(commands.Cog):
         self.invites = {}
         self.invite_init_task = None
         self.unavailable_channel_notified = set()
-        self.message_fetch_locks = {}
+        self.message_fetch_locks = WeakValueDictionary()
         self.message_fetch_rate_limit_alerts = {}
 
     async def cog_load(self) -> None:
@@ -2022,6 +2025,7 @@ class Logger(commands.Cog):
         context_rows: list[Tuple[str, str]] = []
         if (
             log.target is not None
+            and not (log.type == "attachment_update" and primary_link is not None)
             and not self._summary_contains_entity(description, log.target)
         ):
             target = self.format_log_entity(log.target)
@@ -2237,11 +2241,18 @@ class Logger(commands.Cog):
         """Remember the newest collapsible card for one destination."""
         self.last_log_deliveries.setdefault(guild_id, {})[channel.id] = {
             "signature": log.collapse_signature,
-            "primary": primary,
-            "mirrors": list(mirrors),
+            "primary": self.delivery_reference(primary),
+            "mirrors": [self.delivery_reference(mirror) for mirror in mirrors],
             "count": count,
             "pending_update": None,
         }
+
+    @staticmethod
+    def delivery_reference(message):
+        """Keep an editable address without retaining a delivered payload."""
+        if isinstance(message, Message):
+            return PartialMessage(channel=message.channel, id=message.id)
+        return message
 
     def is_ignored_bot(self, guild_id: str, user_id: int) -> bool:
         """Return whether a user ID is in this guild's ignored-bot filter."""
@@ -4158,8 +4169,78 @@ class Logger(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         for guild_id in list(self.config.keys()):
-            self.start_worker(guild_id)
+            if self.bot.get_guild(int(guild_id)):
+                self.start_worker(guild_id)
         self.start_invite_initialization()
+
+    async def cleanup_runtime_state(self, now):
+        """Expire idle payloads even when no new event arrives for a guild."""
+        for guild_id in list(self.recent_logs):
+            entries = self.recent_logs.get(guild_id, [])
+            entries[:] = [entry for entry in entries if entry[1] >= now - 86_400]
+            await asyncio.sleep(0)
+        for guild_id in list(audit_entry_cache):
+            entries = audit_entry_cache.get(guild_id, [])
+            fresh = [entry for entry in entries if entry.created_at.timestamp() > now - 30]
+            if fresh:
+                audit_entry_cache[guild_id] = fresh
+            else:
+                audit_entry_cache.pop(guild_id, None)
+            await asyncio.sleep(0)
+        current = monotonic()
+        for guild_id, (deadline, _entries) in list(audit_rest_cache.items()):
+            if deadline <= current:
+                audit_rest_cache.pop(guild_id, None)
+        for channel_id, warned_at in list(self.message_fetch_rate_limit_alerts.items()):
+            if warned_at <= now - 60:
+                self.message_fetch_rate_limit_alerts.pop(channel_id, None)
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        guild_id = str(guild.id)
+        pending = []
+        worker = self.bot.tasks["logger"].get(guild_id)
+        watchdog = self.permission_queue_watchdogs.get(guild_id)
+        if worker is not None:
+            pending.append(worker)
+        if watchdog is not None:
+            pending.append(watchdog)
+        self.stop_worker(guild_id)
+        self.stop_permission_queue_watchdog(guild_id)
+        for pool_id, task in list(self.pool.items()):
+            if pool_id[0] == guild_id:
+                self.pool.pop(pool_id, None)
+                task.cancel()
+                pending.append(task)
+        for delivery in self.last_log_deliveries.get(guild_id, {}).values():
+            task = delivery.get("pending_update")
+            if task is not None:
+                task.cancel()
+                pending.append(task)
+        task = audit_rest_tasks.pop(guild.id, None)
+        if task is not None:
+            task.cancel()
+            pending.append(task)
+        for registry in (self.queue, self.health, self.recent_logs,
+                         self.last_log_deliveries, self.invites, self.cycle, self.colors,
+                         self.queue_full_alerts):
+            registry.pop(guild_id, None)
+        self.unavailable_channel_notified.discard(guild_id)
+        audit_entry_cache.pop(guild.id, None)
+        audit_rest_cache.pop(guild.id, None)
+        for channel in (*guild.channels, *guild.threads):
+            self.typing.pop(channel.id, None)
+            self.message_fetch_rate_limit_alerts.pop(channel.id, None)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild):
+        guild_id = str(guild.id)
+        if guild_id in self.config:
+            self.queue.setdefault(guild_id, asyncio.Queue(maxsize=self.queue_size))
+            self.recent_logs.setdefault(guild_id, [])
+            self.start_worker(guild_id)
 
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry):
@@ -4412,12 +4493,14 @@ class Logger(commands.Cog):
                         files.append(await attachment.to_file(use_cached=True))
             e = Embed(color=orange)
             e.set_author(name="Message Attachments Updated", icon_url=get_avatar(after.author))
-            e.set_thumbnail(url=after.author.display_avatar.url)
-            e.description = chain(
-                f"{after.author.mention} updated message attachments\n"
-                f"In {after.channel.mention}\n"
-                f"**[Jump URL]({after.jump_url})**"
-            )
+            e.description = f"{after.author.mention} • {after.channel.mention}"
+            details = {}
+            for label, attachments in (("➕ Added", added), ("➖ Removed", removed)):
+                if attachments:
+                    details[label] = [
+                        f"{attachment.filename} ({bytes2human(attachment.size)})"
+                        for attachment in attachments
+                    ]
             self.add_to_queue(
                 guild_id,
                 "attachment_update",
@@ -4427,17 +4510,7 @@ class Logger(commands.Cog):
                 target=f"Message `{after.id}`",
                 target_label="Message",
                 channel=after.channel,
-                details={
-                    **self.message_log_details(after),
-                    "➕ Added": [
-                        f"{attachment.filename} • {attachment.size:,} bytes"
-                        for attachment in added
-                    ] or ["None"],
-                    "➖ Removed": [
-                        f"{attachment.filename} • {attachment.size:,} bytes"
-                        for attachment in removed
-                    ] or ["None"],
-                },
+                details=details,
                 links=[("Open message", after.jump_url, "↗️")],
                 created_at=(after.edited_at or utcnow()).timestamp(),
             )

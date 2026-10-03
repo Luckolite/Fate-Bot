@@ -27,6 +27,7 @@ from pathlib import Path
 import aiofiles
 import aiohttp
 import pymongo.errors
+from pymongo import InsertOne, ReplaceOne
 import pymysql
 from discord.ext import tasks
 
@@ -65,7 +66,7 @@ BUILTIN_CACHE_COLLECTIONS = frozenset(
         "welcome",
     }
 )
-BUILTIN_CACHE_COPIES = {"settings": 2}
+MONGO_FLUSH_BATCH_SIZE = 128
 
 
 def load_builtin_cache_snapshots(
@@ -86,10 +87,7 @@ def load_builtin_cache_snapshots(
             documents[document["_id"]] = {
                 key: value for key, value in document.items() if key != "_id"
             }
-        snapshots[collection_name] = [
-            (deepcopy(documents), deepcopy(documents))
-            for _copy in range(BUILTIN_CACHE_COPIES.get(collection_name, 1))
-        ]
+        snapshots[collection_name] = [(documents, deepcopy(documents))]
     return snapshots
 
 
@@ -129,26 +127,57 @@ class Cache:
             await self.flush()
         finally:
             self.task = None
+        # An edit can arrive while MongoDB acknowledges the first snapshot.
+        # Its setter saw an active task, so queue another delayed flush now.
+        if self.auto_sync and any(
+            key not in self._db_state or value != self._db_state[key]
+            for key, value in self._cache.items()
+        ):
+            self.task = self.bot.loop.create_task(self.sync_task())
 
     async def flush(self):
         async with self._flush_lock:
             collection = self.bot.aio_mongo[self.collection]
-            for key, value in list(self._cache.items()):
-                if key not in self._cache:
-                    continue
-                if key not in self._db_state:
-                    with suppress(pymongo.errors.DuplicateKeyError):
-                        await collection.insert_one({
-                            "_id": key, **value
-                        })
-                    self._db_state[key] = deepcopy(value)
-                elif value != self._db_state[key]:
-                    await collection.replace_one(
-                        filter={"_id": key},
-                        replacement=self._cache[key],
-                        upsert=True
-                    )
-                    self._db_state[key] = deepcopy(value)
+            batch = []
+            for key in list(self._cache):
+                if key in self._cache and (
+                    key not in self._db_state or self._cache[key] != self._db_state[key]
+                ):
+                    # A cog can mutate nested values while the database yields.
+                    # Acknowledge only this snapshot, never the later live value.
+                    batch.append((key, deepcopy(self._cache[key])))
+                if len(batch) == MONGO_FLUSH_BATCH_SIZE:
+                    await self._flush_batch(collection, batch)
+                    batch = []
+            if batch:
+                await self._flush_batch(collection, batch)
+
+    async def _flush_batch(self, collection, batch):
+        operations = [
+            InsertOne({"_id": key, **value}) if key not in self._db_state
+            else ReplaceOne({"_id": key}, value, upsert=True)
+            for key, value in batch
+        ]
+        error = None
+        failed = set()
+        try:
+            await collection.bulk_write(operations, ordered=False)
+        except pymongo.errors.BulkWriteError as exc:
+            # Without write-concern acknowledgement, retain the whole batch.
+            if exc.details.get("writeConcernErrors"):
+                raise
+            for failure in exc.details["writeErrors"]:
+                index = failure["index"]
+                # Preserve the legacy insert behavior for documents already
+                # present in MongoDB; replacement failures must still retry.
+                if failure["code"] != 11000 or not isinstance(operations[index], InsertOne):
+                    failed.add(index)
+                    error = exc
+        for index, (key, value) in enumerate(batch):
+            if index not in failed:
+                self._db_state[key] = value
+        if error is not None:
+            raise error
 
     def keys(self):
         return self._cache.keys()
@@ -180,16 +209,16 @@ class Cache:
             self.task = self.bot.loop.create_task(self.sync_task())
 
     def remove(self, key):
-        if key in self._db_state:
-            return self.bot.loop.create_task(self._remove_from_db(key))
-        else:
-            self._cache.pop(key, None)
-            return asyncio.sleep(0)
+        return self.bot.loop.create_task(self._remove_from_db(key))
 
     def remove_sub(self, key, sub_key):
         return self.bot.loop.create_task(self._remove_from_db(key, sub_key))
 
     async def _remove_from_db(self, key, sub_key=None):
+        async with self._flush_lock:
+            await self._remove_locked(key, sub_key)
+
+    async def _remove_locked(self, key, sub_key=None):
         collection = self.bot.aio_mongo[self.collection]
         if sub_key:
             await collection.update_one(
@@ -202,8 +231,9 @@ class Cache:
                 if sub_key in self._db_state[key]:
                     del self._db_state[key][sub_key]
         else:
-            await collection.delete_one({"_id": key})
-            del self._cache[key]
+            if key in self._db_state:
+                await collection.delete_one({"_id": key})
+            self._cache.pop(key, None)
             if key in self._db_state:
                 del self._db_state[key]
 
@@ -344,6 +374,19 @@ class AsyncFileManager:
             if self.lock:
                 self._file_lock.release()
         return None
+
+
+async def delete_in_batches(bot, query, args=None):
+    """Run a DELETE with LIMIT 5000, returning the connection between batches."""
+    removed = 0
+    while True:
+        async with bot.utils.cursor() as cur:
+            await cur.execute(query, args)
+            affected = cur.rowcount
+        removed += affected
+        if affected < 5000:
+            return removed
+        await asyncio.sleep(0.1)
 
 
 class Cursor:

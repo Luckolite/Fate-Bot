@@ -14,9 +14,7 @@ import random
 from contextlib import suppress
 from typing import *
 
-import aiohttp
 import discord
-from discord import Webhook
 from discord.ext import commands
 
 
@@ -60,12 +58,38 @@ class Reactions(
         if isinstance(ctx.channel, discord.Thread):
             raise commands.CheckFailure("You can't use this module in threads")
 
-    async def queue(self, ctx, reaction, path):
-        await asyncio.sleep(60 * 5)
-        if path in self.sent[reaction][ctx.guild.id]:
-            del self.sent[reaction][ctx.guild.id][path]
-        if not self.sent[reaction][ctx.guild.id]:
-            del self.sent[reaction][ctx.guild.id]
+    def expire_selection(self, guild_id, reaction, path):
+        guilds = self.sent.get(reaction, {})
+        paths = guilds.get(guild_id, {})
+        paths.pop(path, None)
+        if not paths:
+            guilds.pop(guild_id, None)
+        if not guilds:
+            self.sent.pop(reaction, None)
+
+    def clear_selections(self, guild_id=None):
+        for reaction, guilds in list(self.sent.items()):
+            for selected_guild, paths in list(guilds.items()):
+                if guild_id is None or selected_guild == guild_id:
+                    for handle in paths.values():
+                        handle.cancel()
+                    guilds.pop(selected_guild, None)
+            if not guilds:
+                self.sent.pop(reaction, None)
+
+    def cog_unload(self):
+        self.clear_selections()
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        self.clear_selections(guild.id)
+        for channel_id, webhook in list(self.webhook.items()):
+            if getattr(getattr(webhook, "guild", None), "id", None) == guild.id:
+                self.webhook.pop(channel_id, None)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel):
+        self.webhook.pop(channel.id, None)
 
     async def send_webhook(self, ctx, reaction: str, args: str, action: str = None):
         # Prevent roles from being mentioned
@@ -89,9 +113,8 @@ class Reactions(
         if ctx.guild.id not in self.sent[reaction]:
             self.sent[reaction][ctx.guild.id] = {}
         if len(self.sent[reaction][ctx.guild.id]) >= len(options):
-            for task in self.sent[reaction][ctx.guild.id].values():
-                if not task.done():
-                    task.cancel()
+            for handle in self.sent[reaction][ctx.guild.id].values():
+                handle.cancel()
             self.sent[reaction][ctx.guild.id] = {}
 
         # Remove sent gifs from possible options and choose which GIF to send
@@ -102,8 +125,8 @@ class Reactions(
         path = os.getcwd() + f"/data/images/reactions/{reaction}/" + filename
 
         # Add and wait 5mins to remove the sent path
-        self.sent[reaction][ctx.guild.id][filename] = self.bot.loop.create_task(
-            self.queue(ctx, reaction, filename)
+        self.sent[reaction][ctx.guild.id][filename] = self.bot.loop.call_later(
+            60 * 5, self.expire_selection, ctx.guild.id, reaction, filename
         )
 
         created_webhook = False
@@ -121,29 +144,27 @@ class Reactions(
                 )
             created_webhook = True
 
-        async with aiohttp.ClientSession() as session:
-            webhook = Webhook.from_url(
-                self.webhook[ctx.channel.id].url, session=session
-            )
-            name = ctx.author.name
-            if "clyde" in name.lower():
-                name = name.lower().replace("clyde", "🚫")
-            await webhook.send(
-                content=args,
-                username=name,
-                avatar_url=ctx.author.display_avatar.url,
-                file=discord.File(
-                    path, filename=reaction + path[-(len(path) - path.find(".")) :]
-                ),
-            )
-            with suppress(Exception):
-                await ctx.message.delete()
-            if created_webhook:
-                await asyncio.sleep(120)
-                if ctx.channel.id in self.webhook:
-                    if self.webhook[ctx.channel.id]:
-                        await self.webhook[ctx.channel.id].delete()
-                        del self.webhook[ctx.channel.id]
+        # Channel webhooks already use discord.py's pooled HTTP session.
+        webhook = self.webhook[ctx.channel.id]
+        name = ctx.author.name
+        if "clyde" in name.lower():
+            name = name.lower().replace("clyde", "🚫")
+        await webhook.send(
+            content=args,
+            username=name,
+            avatar_url=ctx.author.display_avatar.url,
+            file=discord.File(
+                path, filename=reaction + path[-(len(path) - path.find(".")) :]
+            ),
+        )
+        with suppress(Exception):
+            await ctx.message.delete()
+        if created_webhook:
+            await asyncio.sleep(120)
+            if ctx.channel.id in self.webhook:
+                if self.webhook[ctx.channel.id]:
+                    await self.webhook[ctx.channel.id].delete()
+                    del self.webhook[ctx.channel.id]
 
     @commands.command(name="intimidate")
     async def intimidate(self, ctx, *, args=None):
