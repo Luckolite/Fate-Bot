@@ -4,11 +4,11 @@ import asyncio
 import importlib
 import io
 import traceback
+from collections.abc import Iterable
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
 from time import monotonic
-from typing import Iterable, Optional
 
 import discord
 from discord.ext import commands
@@ -22,11 +22,11 @@ COMMAND_SYNC_COOLDOWN_SECONDS = 5 * 60
 @dataclass(slots=True)
 class ExtensionResult:
     requested: str
-    extension: Optional[str] = None
-    action: Optional[str] = None
+    extension: str | None = None
+    action: str | None = None
     elapsed_ms: int = 0
-    error: Optional[str] = None
-    traceback: Optional[str] = None
+    error: str | None = None
+    traceback: str | None = None
 
     @property
     def name(self) -> str:
@@ -305,7 +305,7 @@ class Reload(commands.Cog):
         sync_attempted: bool,
         full_reload: bool = False,
         sync_cooldown: int = 0,
-        website_status: Optional[str] = None,
+        website_status: str | None = None,
     ) -> discord.Embed:
         successes = [result for result in results if result.succeeded]
         failures = [result for result in results if not result.succeeded]

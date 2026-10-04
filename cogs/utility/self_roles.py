@@ -11,7 +11,7 @@ A selfroles module using buttons instead of reactions
 import asyncio
 from contextlib import suppress
 from copy import deepcopy
-from typing import *
+from typing import Any
 
 import discord
 from discord import ui, Interaction
@@ -194,7 +194,7 @@ class SelfRoles(commands.Cog):
             await message.clear_reactions()
         return message
 
-    def format_text(self, guild_id: int, message_id: Union[int, str]) -> str:
+    def format_text(self, guild_id: int, message_id: int | str) -> str:
         conf: dict = self.config[guild_id][message_id]
         text: str = conf["text"]
         if conf["show_roles"]:
@@ -255,8 +255,8 @@ class SelfRoles(commands.Cog):
             )
             e.add_field(
                 name="◈ Formatting",
-                value=f"- To change the 'Choose your role' message after "
-                      f"creating a menu use the `edit-message` command"
+                value="- To change the 'Choose your role' message after "
+                      "creating a menu use the `edit-message` command"
             )
             count = 0
             if ctx.guild.id in self.config:
@@ -314,10 +314,10 @@ class SelfRoles(commands.Cog):
                     return await ctx.send("It seems you didn't add any roles. Rerun the command and try again")
                 break
 
-            name: Optional[str] = reply.content
-            emoji: Optional[str] = None
-            label: Optional[str] = None
-            description: Optional[str] = None
+            name: str | None = reply.content
+            emoji: str | None = None
+            label: str | None = None
+            description: str | None = None
 
             args = list(reply.content.split("\n")[0].split(" | "))
             if len(args) > 1:
@@ -327,7 +327,7 @@ class SelfRoles(commands.Cog):
                     try:
                         await msg.add_reaction(emoji)
                         await msg.clear_reactions()
-                    except:
+                    except Exception:
                         emoji = None
                     else:
                         args.pop(0)
@@ -504,10 +504,10 @@ class SelfRoles(commands.Cog):
         if len(self.config[guild_id][message_id]["roles"]) == 25:
             return await ctx.send("You can't have more than 25 roles in a menu")
 
-        name: Optional[str] = role
-        emoji: Optional[str] = None
-        label: Optional[str] = None
-        description: Optional[str] = None
+        name: str | None = role
+        emoji: str | None = None
+        label: str | None = None
+        description: str | None = None
 
         args = list(role.split("\n")[0].split(" | "))
         if len(args) > 1:
@@ -650,7 +650,7 @@ class SelfRoles(commands.Cog):
         self.config[guild_id][message_id]["roles"][roles[choice]]["label"] = new_label
 
         await self.refresh_menu(guild_id, message_id)
-        await ctx.send(f"Set its label 👍")
+        await ctx.send("Set its label 👍")
         await self.config.flush()
 
     @commands.command(name="edit-message", description="Sets the msg content of a menu")
@@ -665,7 +665,7 @@ class SelfRoles(commands.Cog):
         self.config[guild_id][message_id]["text"] = new_message
 
         await self.refresh_menu(guild_id, message_id)
-        await ctx.send(f"Edited the content 👍")
+        await ctx.send("Edited the content 👍")
         await self.config.flush()
 
     @commands.command(name="set-emoji", description="Sets a roles emoji in an existing menu")
@@ -705,7 +705,7 @@ class SelfRoles(commands.Cog):
         self.config[guild_id][message_id]["roles"][roles[choice]]["emoji"] = new_emoji
 
         await self.refresh_menu(guild_id, message_id)
-        await ctx.send(f"Set the emoji 👍")
+        await ctx.send("Set the emoji 👍")
         await self.config.flush()
 
     @commands.command(name="set-description", description="Sets a roles description in an existing menu")
@@ -737,7 +737,7 @@ class SelfRoles(commands.Cog):
         self.config[guild_id][message_id]["roles"][roles[choice]]["description"] = new_description[:100]
 
         await self.refresh_menu(guild_id, message_id)
-        await ctx.send(f"Set the description 👍")
+        await ctx.send("Set the description 👍")
         await self.config.flush()
 
     @commands.command(name="swap-style", description="Swaps using buttons or dropdowns")
@@ -938,7 +938,7 @@ class RoleView(ui.View):
                 self.bot.views[guild_id][str(message_id)].stop()
         self.bot.views[guild_id][str(message_id)] = self
 
-        conf: Dict[str, Optional[Any]] = cls.config[guild_id][str(message_id)]
+        conf: dict[str, Any | None] = cls.config[guild_id][str(message_id)]
         self.style: str = cls.config[guild_id][str(message_id)]["style"]
         self.limit: int = conf["limit"]
         if not self.limit or self.limit > len(conf["roles"]):
@@ -1032,7 +1032,7 @@ class RoleView(ui.View):
             else:
                 await self.select_callback(interaction)
 
-    async def button_callback(self, interaction: Interaction) -> Optional[discord.Message]:
+    async def button_callback(self, interaction: Interaction) -> discord.Message | None:
         """ The callback function for when a buttons pressed """
 
         async def remove_button(reason) -> discord.Message:
@@ -1144,7 +1144,7 @@ class RoleView(ui.View):
                     }
                 )
 
-    async def select_callback(self, interaction: Interaction) -> Optional[discord.Message]:
+    async def select_callback(self, interaction: Interaction) -> discord.Message | None:
         """ The callback function for when a buttons pressed """
 
         async def adjust_options(reason=None, remove_role_ids=()) -> None:
@@ -1243,7 +1243,7 @@ class RoleView(ui.View):
 
 
 class Select(discord.ui.Select):
-    def __init__(self, cls: Union[RoleView, Any], guild_id: int, message_id: int, roles: dict, callback=None):
+    def __init__(self, cls: RoleView | Any, guild_id: int, message_id: int, roles: dict, callback=None):
         self.cls = cls
         self.custom_callback = callback
 

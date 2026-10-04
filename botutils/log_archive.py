@@ -8,10 +8,11 @@ import re
 import sqlite3
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from time import time
-from typing import Any, Callable
+from typing import Any
 
 MAX_GUILD_BYTES = 1024**3
 MAX_ATTACHMENT_BYTES = 25 * 1024**2

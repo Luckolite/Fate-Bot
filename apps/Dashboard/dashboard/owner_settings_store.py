@@ -13,11 +13,12 @@ import stat
 import tempfile
 import time
 import unicodedata
+from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from .validation import ValidationError
 

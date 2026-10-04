@@ -94,38 +94,38 @@ class Tasks(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def cog_cleanup(self):
-        # Clean the filtered messages index by only keeping recent deletes
+        """Expire old deletion records, idle cog state, and command cooldowns."""
         if not hasattr(self.bot, "filtered_messages"):
             self.bot.filtered_messages = {}
         now = time.time()
         cutoff = now - 1800
-        for guild_id, msgs in list(self.bot.filtered_messages.items()):
+        for guild_id, messages in list(self.bot.filtered_messages.items()):
             await asyncio.sleep(0)
-            for index, (msg_id, deleted_at) in enumerate(list(msgs.items())):
+            for index, (message_id, deleted_at) in enumerate(list(messages.items())):
                 if index and index % 128 == 0:
                     await asyncio.sleep(0)
-                if deleted_at < cutoff and msgs.get(msg_id) == deleted_at:
-                    msgs.pop(msg_id, None)
-            if not msgs and self.bot.filtered_messages.get(guild_id) is msgs:
+                if deleted_at < cutoff and messages.get(message_id) == deleted_at:
+                    messages.pop(message_id, None)
+            if not messages and self.bot.filtered_messages.get(guild_id) is messages:
                 self.bot.filtered_messages.pop(guild_id, None)
 
         # Inspect cog instances, not the string keys of bot.cogs. Cooldowns
         # already throttle their cleanup; avoid yielding for every attribute.
         for cog in list(self.bot.cogs.values()):
-            for attr in list(vars(cog).values()):
-                if isinstance(attr, Cooldown):
-                    attr._cleanup(now)
+            for attribute in list(vars(cog).values()):
+                if isinstance(attribute, Cooldown):
+                    attribute._cleanup(now)
             cleanup = getattr(cog, "cleanup_runtime_state", None)
             if cleanup is not None:
                 await cleanup(now)
 
         # discord.py otherwise expires command buckets only when that command
         # is used again. Rarely used commands should not retain idle user IDs.
-        seen = set()
+        seen_mappings = set()
         for command in getattr(self.bot, "walk_commands", lambda: ())():
             mapping = command._buckets
-            if id(mapping) not in seen:
-                seen.add(id(mapping))
+            if id(mapping) not in seen_mappings:
+                seen_mappings.add(id(mapping))
                 mapping._verify_cache_integrity(now)
 
     @tasks.loop(minutes=1)
@@ -348,7 +348,7 @@ class Tasks(commands.Cog):
         path = getattr(self.bot, "config_path", None)
         if path is None:
             return None
-        with open(path, "r", encoding="utf-8") as stream:
+        with open(path, encoding="utf-8") as stream:
             payload = json.load(stream)
         backups = payload.get("backups") if isinstance(payload, dict) else None
         return backups if isinstance(backups, dict) else None

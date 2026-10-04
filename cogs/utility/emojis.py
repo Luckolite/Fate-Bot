@@ -13,7 +13,6 @@ import sys
 import traceback
 from contextlib import suppress
 from io import BytesIO
-from typing import Union
 
 import aiohttp
 import discord
@@ -123,7 +122,7 @@ class Emojis(commands.Cog):
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.cooldown(2, 5, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, attach_files=True)
-    async def emoji(self, ctx, *emojis: Union[discord.Emoji, discord.PartialEmoji]):
+    async def emoji(self, ctx, *emojis: discord.Emoji | discord.PartialEmoji):
         """Sends the emoji in image form"""
         if not emojis:
             return await ctx.send(self.emoji.usage)
@@ -176,7 +175,7 @@ class Emojis(commands.Cog):
         with suppress(Exception):
             _sticker = await sticker.fetch()
             if _sticker.guild.id in [497860460117360660, 397415086295089155, 850956124168519700]:
-                return await ctx.send(f"Nice try fatty! <:you:850992972988284958>")
+                return await ctx.send("Nice try fatty! <:you:850992972988284958>")
         e = discord.Embed(color=colors.fate)
         e.description = str(sticker.id)
         e.set_image(url=sticker.url)
@@ -229,23 +228,6 @@ class Emojis(commands.Cog):
             ctx.message = await ctx.channel.fetch_message(
                 ctx.message.id
             )  # fix prefix-command content being lowercase
-        limit = ctx.guild.emoji_limit
-
-        def at_emoji_limit() -> bool:
-            return len(ctx.guild.emojis) >= limit * 2
-
-        def total_emotes() -> int:
-            return len([emote for emote in ctx.guild.emojis if not emoji.animated])
-
-        def total_animated() -> int:
-            return len([emote for emote in ctx.guild.emojis if emoji.animated])
-
-        # Handle emoji limitations
-        # if at_emoji_limit():
-        #     return await ctx.send(
-        #         "You're at the limit for both emojis and animated emojis"
-        #     )
-
         # initialization
         if not custom and not ids and not args and not ctx.message.attachments and not ctx.message.stickers:
             return await ctx.send(
@@ -261,19 +243,6 @@ class Emojis(commands.Cog):
 
         # PartialEmoji objects
         for emoji in custom:
-            # if not at_emoji_limit():
-                # if emoji.animated and total_animated() == limit:
-                #     if "Animated Limit Reached" not in ctx.msg.content:
-                #         ctx.msg = await update_msg(
-                #             ctx.msg, f"Animated Limit Reached"
-                #         )
-                #     continue
-                # elif not emoji.animated and total_emotes() == limit:
-                #     if "Emote Limit Reached" not in ctx.msg.content:
-                #         ctx.msg = await update_msg(
-                #             ctx.msg, f"Emote Limit Reached"
-                #         )
-                #     continue
             name = emoji.name
             img = await download(emoji.url)
             await self.upload_emoji(ctx, name=name, img=img, reason=str(ctx.author))
@@ -417,7 +386,7 @@ class Emojis(commands.Cog):
             with suppress(Exception):
                 _sticker = await sticker.fetch()
                 if _sticker.guild.id in [497860460117360660, 397415086295089155]:
-                    return await ctx.send(f"Nice try fatty! <:you:841098144536068106>")
+                    return await ctx.send("Nice try fatty! <:you:841098144536068106>")
             img = await download(sticker.url)
             file = discord.File(BytesIO(img), filename="sticker.png")
             try:
@@ -446,7 +415,7 @@ class Emojis(commands.Cog):
         for arg in args:
             try:
                 raw_file = await download(arg)
-            except:
+            except Exception:
                 await ctx.send(f"Failed to fetch {arg}")
                 continue
             paths = arg.split("/")

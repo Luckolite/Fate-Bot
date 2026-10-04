@@ -28,12 +28,13 @@ import sys
 import tempfile
 import threading
 import unicodedata
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic, sleep, time
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urlsplit
 
 import aiohttp

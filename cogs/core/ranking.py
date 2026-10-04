@@ -15,7 +15,6 @@ from io import BytesIO
 from pathlib import Path
 from random import choice, randint
 from time import time, monotonic
-from typing import Union
 from unicodedata import normalize
 from weakref import WeakValueDictionary
 
@@ -166,8 +165,8 @@ class Ranking(commands.Cog):
         # Help menus
         self.set_usage = self.set
         self.role_rewards_usage = self.role_rewards
-        self.profile_usage = f"`.profile` your global rank\n" \
-                             f"`.rank` your rank in the server"
+        self.profile_usage = "`.profile` your global rank\n" \
+                             "`.rank` your rank in the server"
         self.leaderboard_usage = "`.lb` server leaderboard\n" \
                                  "`.glb` global leaderboard\n" \
                                  "`.mlb` monthly server leaderboard\n" \
@@ -715,7 +714,7 @@ class Ranking(commands.Cog):
 
     @role_rewards.command(name="add", description="Adds a role reward for a level")
     @commands.has_permissions(manage_roles=True)
-    async def _add(self, ctx, level: int, *, role: Union[discord.Role, str]):
+    async def _add(self, ctx, level: int, *, role: discord.Role | str):
         if level <= 0:
             return await ctx.send("The level requirement can't be less than 1")
         if isinstance(role, str):
@@ -756,7 +755,7 @@ class Ranking(commands.Cog):
 
     @role_rewards.command(name="remove", description="Removes a role reward")
     @commands.has_permissions(manage_roles=True)
-    async def _remove(self, ctx, role: Union[discord.Role, str]):
+    async def _remove(self, ctx, role: discord.Role | str):
         if isinstance(role, str):
             role = await self.bot.utils.get_role(ctx, role)
             if not role:
@@ -936,7 +935,7 @@ class Ranking(commands.Cog):
     async def _disable_xp(
         self,
         ctx,
-        channel: Union[discord.TextChannel, discord.Thread] = None,
+        channel: discord.TextChannel | discord.Thread = None,
     ):
         channel = channel or ctx.channel
         conf = await self.config[ctx.guild.id]
@@ -958,7 +957,7 @@ class Ranking(commands.Cog):
     async def _enable_xp(
         self,
         ctx,
-        channel: Union[discord.TextChannel, discord.Thread] = None,
+        channel: discord.TextChannel | discord.Thread = None,
     ):
         channel = channel or ctx.channel
         conf = await self.config[ctx.guild.id]

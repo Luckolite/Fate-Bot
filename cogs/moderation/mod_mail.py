@@ -11,12 +11,14 @@ A cog for users to interact with cases
 from contextlib import suppress
 from time import time
 
-from discord import *
-from discord import User, Guild, Thread, TextChannel, Embed, Message, AllowedMentions
+from discord import (
+    AllowedMentions, Embed, Forbidden, Guild, Message, NotFound,
+    TextChannel, Thread, User,
+)
 from discord.ext import commands
 from discord.ext.commands import Context
 
-from botutils.colors import *
+from botutils.colors import pink, red
 from fate import Fate
 
 
@@ -99,7 +101,7 @@ class ModMail(commands.Cog):
         if not self.bot.attrs.is_moderator(ctx.author):
             return await ctx.send("Only moderators can use this command")
         if ctx.author.id == user.id:
-            return await ctx.send(f"<:waitThatsIllegal:590584708174184448> that's illegal")
+            return await ctx.send("<:waitThatsIllegal:590584708174184448> that's illegal")
         if ctx.guild.id not in self.config:
             return await ctx.send("Modmail isn't enabled in this server")
         if user.id in self.config[ctx.guild.id]["blocked"]:
@@ -163,7 +165,7 @@ class ModMail(commands.Cog):
         user = self.bot.get_user(result[0])
         if not user:
             await ctx.message.channel.send(
-                f"I no longer share any servers with this user, therefore cannot dm them"
+                "I no longer share any servers with this user, therefore cannot dm them"
             )
             return None
 
@@ -190,7 +192,7 @@ class ModMail(commands.Cog):
                 "or I no longer share any servers with them"
             )
         else:
-            e.set_footer(text=f"Use .reply to respond again")
+            e.set_footer(text="Use .reply to respond again")
             await ctx.send(embed=e)
             if not ctx.message.attachments:
                 await ctx.message.delete()
@@ -265,6 +267,7 @@ class ModMail(commands.Cog):
                 return None
             result = sorted_results[formatted_results.index(choice)]
         guild_id, case, case_action, reason, link, created_at = result
+        case_thread_name = f"Case {case} "
 
         guild = self.bot.get_guild(guild_id)
         if not guild or guild.id not in self.config:
@@ -284,7 +287,7 @@ class ModMail(commands.Cog):
             )
 
         async for thread in channel.archived_threads():
-            if f"Case {case}" in thread.name and thread.name.endswith("(Closed)"):
+            if case_thread_name in thread.name and thread.name.endswith("(Closed)"):
                 return await ctx.send("That thread is currently closed. Try again another time")
 
         if not message and not attachment:
@@ -297,7 +300,7 @@ class ModMail(commands.Cog):
 
         threads = [thread async for thread in channel.archived_threads()]
         for thread in [*threads, *await guild.active_threads()]:
-            if f"Case {case} " in thread.name:
+            if case_thread_name in thread.name:
                 if thread.name.endswith("(Closed)"):
                     return await ctx.send("That thread's currently closed")
                 await self.reference(guild_id, case, pink, f"New Reply on **Case #{case}**")
@@ -333,7 +336,6 @@ class ModMail(commands.Cog):
             except Forbidden:
                 await ctx.send("Failed to create a thread due to my lacking manage_channel perms in that server")
                 return None
-            e.set_footer(text="Use .reply to respond")
             return await ctx.send("Created your thread 👍")
 
         e = Embed(color=self.bot.config["theme_color"])
@@ -369,7 +371,7 @@ class ModMail(commands.Cog):
 
         if not ctx.channel.permissions_for(ctx.guild.me).manage_threads:
             return await ctx.send(
-                f"To close the thread, delete the channel, or give me permissions to and rerun the cmd"
+                "To close the thread, delete the channel, or give me permissions to and rerun the cmd"
             )
         case_number = int(case)
         async with self.bot.utils.cursor() as cur:

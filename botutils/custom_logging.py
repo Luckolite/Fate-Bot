@@ -42,10 +42,7 @@ class Logging:
 
     @property
     def time(self):
-        now = str(datetime.now().strftime("%I:%M%p"))
-        if now.startswith("0"):
-            now = now.replace("0", "", 1)
-        return now
+        return datetime.now().strftime("%I:%M%p").lstrip("0")
 
     @tasks.loop(seconds=0.51)
     async def handle_queue(self):
@@ -74,33 +71,29 @@ class Logging:
             )
             await asyncio.sleep(5)
 
+    def _format_and_print(self, log, level, default_color, *args, **kwargs):
+        kwargs.setdefault("color", default_color)
+        formatted = "\n".join(
+            f"{self.time} | {level} | {line}" for line in log.split("\n")
+        )
+        cprint(formatted, *args, **kwargs)
+        return formatted
+
     def debug(self, log, *args, **kwargs):
-        if "color" not in kwargs:
-            kwargs["color"] = "cyan"
         if self.bot.debug_logging:
-            log = "\n".join(f"{self.time} | DEBUG | {line}" for line in log.split("\n"))
-            cprint(log, *args, **kwargs)
+            log = self._format_and_print(log, "DEBUG", "cyan", *args, **kwargs)
             self.queue.append(f"```{log}```")
 
     def info(self, log, *args, **kwargs):
-        if "color" not in kwargs:
-            kwargs["color"] = "green"
-        log = "\n".join(f"{self.time} | INFO | {line}" for line in log.split("\n"))
-        cprint(log, *args, **kwargs)
+        log = self._format_and_print(log, "INFO", "green", *args, **kwargs)
         self.queue.append(f"```{log}```")
 
     def warning(self, log, *args, **kwargs):
-        if "color" not in kwargs:
-            kwargs["color"] = "yellow"
-        log = "\n".join(f"{self.time} | WARNING | {line}" for line in log.split("\n"))
-        cprint(log, *args, **kwargs)
+        log = self._format_and_print(log, "WARNING", "yellow", *args, **kwargs)
         self.queue.append(f"```{log}```")
 
     def critical(self, log, *args, **kwargs):
-        if "color" not in kwargs:
-            kwargs["color"] = "red"
-        log = "\n".join(f"{self.time} | CRITICAL | {line}" for line in log.split("\n"))
-        cprint(log, *args, **kwargs)
+        log = self._format_and_print(log, "CRITICAL", "red", *args, **kwargs)
         recipient_id = self.bot.config.get(
             "logging_ping_user_id", self.bot.config["bot_owner_id"]
         )

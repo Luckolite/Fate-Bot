@@ -11,7 +11,6 @@ A module for configuring per-server custom commands
 import random
 from contextlib import suppress
 from time import time
-from typing import *
 
 from discord import Message, Embed, AllowedMentions, ui, utils, Interaction, Guild, Thread
 from discord import NotFound, Forbidden
@@ -28,8 +27,8 @@ class CustomCommands(commands.Cog):
 
     def __init__(self, bot: Fate) -> None:
         self.bot = bot
-        self.cache: Dict[int, Dict[str, List[Union[Optional[str], float]]]] = {}
-        self.guilds: Set[int] = set()
+        self.cache: dict[int, dict[str, list[str | None | float]]] = {}
+        self.guilds: set[int] = set()
         self.cd = Cooldown(1, 10)
         self.cleanup_task.start()
 
@@ -92,28 +91,18 @@ class CustomCommands(commands.Cog):
                 await msg.edit(view=view)
 
     @cc.group(name="add", description="Creates a custom command")
-    async def add(self, ctx, command, *, response) -> Optional[Message]:
+    async def add(self, ctx, command, *, response) -> Message | None:
         """ Creates a custom command """
         if not self.bot.attrs.is_moderator(ctx.author):
             return await ctx.send("You need to be a moderator to manage custom commands")
         if not response:
-            return await ctx.send(f"You need to include a response for when the command's ran")
+            return await ctx.send("You need to include a response for when the command's ran")
         if len(command) > 16:
             return await ctx.send("Command names can't be longer than 16 characters")
         if not all(c.lower() != c.upper() for c in command):
             return await ctx.send("Commands can only have abc characters")
         if self.bot.get_command(command):
             return await ctx.send(f"Command `{command}` already exists")
-
-        # Configure options
-        # convo = Conversation(ctx=ctx, delay=2)
-        # reply = await convo.ask(
-        #     "Should I delete the initial command after its been used?",
-        #     use_buttons=True
-        # )
-        # if reply == "yes":
-        #     ...
-        # await convo.end()
 
         command = command.lower()
         async with self.bot.utils.cursor() as cur:
@@ -138,7 +127,7 @@ class CustomCommands(commands.Cog):
         await ctx.send(f"Added {command} as a custom command")
 
     @cc.command(name="remove", description="Deletes a custom command")
-    async def remove(self, ctx, command = None) -> Optional[Message]:
+    async def remove(self, ctx, command = None) -> Message | None:
         """ Deletes a custom command """
         if not self.bot.attrs.is_moderator(ctx.author):
             return await ctx.send("You need to be a moderator to manage custom commands")
@@ -243,7 +232,7 @@ class CustomCommands(commands.Cog):
 
 class View(ui.View):
     """ Creates a button to view the existing custom commands """
-    def __init__(self, bot, custom_commands: List[Tuple[str]]) -> None:
+    def __init__(self, bot, custom_commands: list[tuple[str]]) -> None:
         self.bot = bot
         self.cd = Cooldown(1, 45)
 

@@ -15,8 +15,9 @@ Classes:
 :license: Proprietary, see LICENSE for details
 """
 
+from collections.abc import Generator
 from contextlib import suppress
-from typing import Any, Dict, Generator, List, Union
+from typing import Any
 
 import discord
 from discord import ui, Interaction, SelectOption, Embed, ButtonStyle
@@ -112,10 +113,10 @@ class AuthorView(ui.View):
 
 
 class Menu(AuthorView):
-    items: Dict[str, Union[Embed, List[Embed]]] = {}
+    items: dict[str, Embed | list[Embed]] = {}
     message: discord.Message = None  # Filled when the class is awaited
 
-    def __init__(self, ctx: Context, pages: Union[dict, list]):
+    def __init__(self, ctx: Context, pages: dict | list):
         self.cd = Cooldown(3, 5)
         self.ctx = ctx
         self.page = 0
@@ -231,10 +232,10 @@ class Configure(ui.View):
         super().__init__(timeout=45)
         self.add_item(_ConfigureDropdown(self))
 
-    def __await__(self) -> Generator[Any, Any, Union[dict, DataContext]]:
+    def __await__(self) -> Generator[Any, Any, dict | DataContext]:
         return self._await().__await__()
 
-    async def _await(self) -> Union[dict, DataContext]:
+    async def _await(self) -> dict | DataContext:
         self.message = await self.ctx.send(embed=self.embed, view=self)
         await self.wait()
         if not self.deleted:

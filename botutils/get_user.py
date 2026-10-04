@@ -19,6 +19,8 @@ from checks.exceptions import IgnoredExit
 
 
 class GetUser:
+    """Resolve user IDs and names, prompting when several matches remain."""
+
     def __init__(self, bot, *args, **kwargs):
         self.bot = bot
         self.multi = False
@@ -100,62 +102,7 @@ class GetUser:
         return True
 
     async def get_user(self):
-        users = []
-        if self.guild:
-            for user_id in self.user_ids:
-                if not await self._validate_id(user_id):
-                    continue
-                member = self.guild.get_member(user_id)
-                if member:
-                    users.append(member)
-            options = []
-            for name in self.names:
-                for member in self.guild.members:
-                    await asyncio.sleep(0)
-                    if name.lower() in str(member).lower():
-                        options.append(member)
-            if options:
-                if len(options) == 1:
-                    users.append(options[0])
-                elif self.multi:
-                    users.extend(options)
-                elif not self.channel:
-                    users.append(options[0])
-                else:
-                    if self.ctx:
-                        choices = []
-                        for m in options:
-                            m = str(m)
-                            if m not in choices:
-                                choices.append(m)
-                        choice = await botutils.GetChoice(self.ctx, choices)
-                    else:
-                        choices = [m.mention for m in options]
-                        choice = await self.bot.utils.get_choice(self.ctx, choices, name="Which user")
-                    if not choice:
-                        raise IgnoredExit
-                    users.append(options[choices.index(choice)])
-        else:
-            for user_id in self.user_ids:
-                if not await self._validate_id(user_id):
-                    continue
-                user = self.bot.get_user(user_id)
-                if not user:
-                    try:
-                        user = await self.bot.fetch_user(user_id)
-                    except (NotFound, Forbidden, HTTPException):
-                        continue
-                users.append(user)
-            if self.names and not self.ctx:
-                raise TypeError("To get users by name 'ctx' is required")
-            converter = commands.UserConverter()
-            for name in self.names:
-                try:
-                    user = await converter.convert(self.ctx, name)
-                    users.append(user)
-                except commands.CommandError:
-                    pass
-
+        users = await self._get_guild_users() if self.guild else await self._get_global_users()
         if not users:
             if self.ctx:
                 await self.ctx.send("Couldn't find any users going by that")
@@ -163,17 +110,77 @@ class GetUser:
             return None
         if self.multi:
             return users
-
         if len(users) > 1:
-            if self.ctx:
-                choices = [str(u) for u in users]
-                choice = await botutils.GetChoice(self.ctx, choices)
-            else:
-                choices = [u.mention for u in users]
-                choice = await self.bot.utils.get_choice(self.ctx, choices, name="Which user")
-            if not choice:
-                raise IgnoredExit
-            return users[choices.index(choice)]
-
+            return await self._choose_user(users)
         return users[0]
+
+    async def _get_guild_users(self):
+        """Find cached members by ID and partial name without fetching Discord."""
+        users = []
+        for user_id in self.user_ids:
+            if not await self._validate_id(user_id):
+                continue
+            member = self.guild.get_member(user_id)
+            if member:
+                users.append(member)
+
+        matches = []
+        for name in self.names:
+            for member in self.guild.members:
+                await asyncio.sleep(0)
+                if name.lower() in str(member).lower():
+                    matches.append(member)
+        if not matches:
+            return users
+        if len(matches) == 1:
+            users.append(matches[0])
+        elif self.multi:
+            users.extend(matches)
+        elif not self.channel:
+            users.append(matches[0])
+        else:
+            users.append(await self._choose_user(matches, unique_names=True))
+        return users
+
+    async def _get_global_users(self):
+        """Use cached users first, then Discord ID fetching and name conversion."""
+        users = []
+        for user_id in self.user_ids:
+            if not await self._validate_id(user_id):
+                continue
+            user = self.bot.get_user(user_id)
+            if not user:
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                except (NotFound, Forbidden, HTTPException):
+                    continue
+            users.append(user)
+        if self.names and not self.ctx:
+            raise TypeError("To get users by name 'ctx' is required")
+        converter = commands.UserConverter()
+        for name in self.names:
+            try:
+                user = await converter.convert(self.ctx, name)
+                users.append(user)
+            except commands.CommandError:
+                pass
+        return users
+
+    async def _choose_user(self, users, *, unique_names=False):
+        """Keep displayed choices aligned with the users they resolve to."""
+        if self.ctx and unique_names:
+            users_by_name = {}
+            for user in users:
+                users_by_name.setdefault(str(user), user)
+            choices = list(users_by_name)
+            users = list(users_by_name.values())
+        else:
+            choices = [str(user) if self.ctx else user.mention for user in users]
+        if self.ctx:
+            choice = await botutils.GetChoice(self.ctx, choices)
+        else:
+            choice = await self.bot.utils.get_choice(self.ctx, choices, name="Which user")
+        if not choice:
+            raise IgnoredExit
+        return users[choices.index(choice)]
 

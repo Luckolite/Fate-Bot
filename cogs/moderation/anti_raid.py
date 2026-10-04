@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter, defaultdict, deque
+from collections.abc import Iterable, Mapping, MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from time import time
-from typing import Any, Deque, Iterable, Mapping, MutableMapping, Optional
+from typing import Any
 
 import discord
 from discord import app_commands
@@ -50,7 +51,7 @@ class ActionRecord:
     entry_id: int
     action: str
     occurred_at: float
-    target_id: Optional[int]
+    target_id: int | None
 
 
 class AntiRaid(commands.Cog):
@@ -62,16 +63,16 @@ class AntiRaid(commands.Cog):
         self.config = bot.utils.cache("anti_raid")
         self.started_at = time()
 
-        self.join_windows: dict[int, Deque[JoinRecord]] = defaultdict(
+        self.join_windows: dict[int, deque[JoinRecord]] = defaultdict(
             lambda: deque(maxlen=MAX_JOIN_RECORDS)
         )
-        self.action_windows: dict[tuple[int, int], Deque[ActionRecord]] = defaultdict(
+        self.action_windows: dict[tuple[int, int], deque[ActionRecord]] = defaultdict(
             lambda: deque(maxlen=MAX_ACTION_RECORDS)
         )
         self.guild_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.processed_audit_entries: dict[int, float] = {}
         self.incident_cooldowns: dict[tuple[int, int, str], float] = {}
-        self.recent_incidents: dict[int, Deque[dict[str, Any]]] = defaultdict(
+        self.recent_incidents: dict[int, deque[dict[str, Any]]] = defaultdict(
             lambda: deque(maxlen=25)
         )
         self.stats: dict[int, dict[str, Any]] = {}
@@ -137,7 +138,7 @@ class AntiRaid(commands.Cog):
 
     def get_config(
         self, guild_id: int, *, create: bool = False
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         config = self.config.get(guild_id)
         if config is None and create:
             config = recommended_config(enabled=False)
@@ -233,7 +234,7 @@ class AntiRaid(commands.Cog):
         return self.stats[guild_id]
 
     def permission_warnings(
-        self, guild: discord.Guild, config: Optional[Mapping[str, Any]] = None
+        self, guild: discord.Guild, config: Mapping[str, Any] | None = None
     ) -> list[str]:
         config = config or self.get_config(guild.id) or recommended_config(enabled=False)
         if not config.get("enabled"):
@@ -442,7 +443,7 @@ class AntiRaid(commands.Cog):
                 config = self.get_config(member.guild.id)
                 assert config is not None
 
-            reason: Optional[str] = None
+            reason: str | None = None
             candidates: list[discord.Member] = []
             join_settings = protections["join_burst"]
             if join_settings["enabled"]:
@@ -620,7 +621,7 @@ class AntiRaid(commands.Cog):
         self,
         guild: discord.Guild,
         *,
-        target_id: Optional[int],
+        target_id: int | None,
         actions: tuple[discord.AuditLogAction, ...],
     ) -> None:
         config = self.get_config(guild.id)
@@ -635,7 +636,7 @@ class AntiRaid(commands.Cog):
         if not actions or not guild.me or not guild.me.guild_permissions.view_audit_log:
             return
 
-        entry: Optional[discord.AuditLogEntry] = None
+        entry: discord.AuditLogEntry | None = None
         for delay in (0.35, 0.8, 1.4):
             await asyncio.sleep(delay)
             after = datetime.now(timezone.utc) - timedelta(seconds=12)
@@ -767,7 +768,7 @@ class AntiRaid(commands.Cog):
         detail: str,
         *,
         outcome: str,
-        actor_id: Optional[int] = None,
+        actor_id: int | None = None,
     ) -> dict[str, Any]:
         incident = {
             "trigger": trigger,
@@ -782,7 +783,7 @@ class AntiRaid(commands.Cog):
 
     def _alert_channel(
         self, guild: discord.Guild, config: Mapping[str, Any]
-    ) -> Optional[discord.abc.Messageable]:
+    ) -> discord.abc.Messageable | None:
         configured = config.get("alert_channel_id")
         candidates = [
             guild.get_channel(int(configured)) if configured else None,

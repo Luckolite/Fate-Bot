@@ -94,7 +94,7 @@ class User(commands.Cog):
         for user_id, name, reason in blocked:
             try:
                 user = await self.bot.fetch_user(user_id)
-            except:
+            except Exception:
                 user = name
             e.add_field(name=str(user), value=reason)
         await ctx.send(embed=e)

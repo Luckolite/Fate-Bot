@@ -71,10 +71,8 @@ class CaseManager(commands.Cog):
     @commands.bot_has_permissions(
         embed_links=True, add_reactions=True, manage_messages=True
     )
-    async def mod_logs(self, ctx, *, args = None):
+    async def mod_logs(self, ctx, *, args=None):
         guild_id = ctx.guild.id
-        has_value = lambda value: value and value != "None" and value != "Unspecified"
-        any_large = lambda values: any(len(str(self.bot.get_user(v))) > 10 for v in values)
         nl = "\n"
 
         # Get logs from a specific user

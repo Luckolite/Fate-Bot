@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter, defaultdict, deque
+from collections.abc import Iterable, Mapping, MutableMapping
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from time import time
-from typing import Any, Deque, Iterable, Mapping, MutableMapping, Optional
+from typing import Any
 
 import discord
 from discord import app_commands
@@ -81,7 +82,7 @@ class SpamSignal:
 
 def attachment_fingerprint(
     attachment: discord.Attachment,
-) -> Optional[tuple[Any, ...]]:
+) -> tuple[Any, ...] | None:
     """Return a short-lived image fingerprint without downloading the upload."""
     content_type = (attachment.content_type or "").lower()
     filename = attachment.filename.lower()
@@ -106,41 +107,41 @@ class AntiSpam(commands.Cog):
         self.notice_cooldown = Cooldown(2, 12)
         self.started_at = time()
 
-        self.member_records: dict[tuple[int, int], Deque[MessageRecord]] = defaultdict(
+        self.member_records: dict[tuple[int, int], deque[MessageRecord]] = defaultdict(
             lambda: deque(maxlen=100)
         )
         self.rate_windows: dict[
-            tuple[int, int, int, int], Deque[float]
+            tuple[int, int, int, int], deque[float]
         ] = defaultdict(lambda: deque(maxlen=100))
         self.mention_windows: dict[
-            tuple[int, int], Deque[tuple[float, int, int]]
+            tuple[int, int], deque[tuple[float, int, int]]
         ] = defaultdict(lambda: deque(maxlen=100))
-        self.macro_windows: dict[tuple[int, int], Deque[float]] = defaultdict(
+        self.macro_windows: dict[tuple[int, int], deque[float]] = defaultdict(
             lambda: deque(maxlen=30)
         )
-        self.typing: dict[tuple[int, int], Deque[datetime]] = defaultdict(
+        self.typing: dict[tuple[int, int], deque[datetime]] = defaultdict(
             lambda: deque(maxlen=30)
         )
         self.link_records: dict[
-            tuple[int, str], Deque[MessageRecord]
+            tuple[int, str], deque[MessageRecord]
         ] = defaultdict(lambda: deque(maxlen=MAX_FINGERPRINT_EVIDENCE))
         self.image_records: dict[
-            tuple[int, tuple[Any, ...]], Deque[MessageRecord]
+            tuple[int, tuple[Any, ...]], deque[MessageRecord]
         ] = defaultdict(lambda: deque(maxlen=MAX_FINGERPRINT_EVIDENCE))
         self.campaign_records: dict[
-            tuple[int, str], Deque[MessageRecord]
+            tuple[int, str], deque[MessageRecord]
         ] = defaultdict(lambda: deque(maxlen=MAX_FINGERPRINT_EVIDENCE))
-        self.edit_windows: dict[tuple[int, int], Deque[float]] = defaultdict(
+        self.edit_windows: dict[tuple[int, int], deque[float]] = defaultdict(
             lambda: deque(maxlen=25)
         )
         self.recent_deletes: dict[tuple[int, int, int, str], float] = {}
-        self.incident_history: dict[tuple[int, int], Deque[float]] = defaultdict(
+        self.incident_history: dict[tuple[int, int], deque[float]] = defaultdict(
             lambda: deque(maxlen=16)
         )
         self.incident_cooldowns: dict[tuple[int, int, str], float] = {}
 
         self.stats: dict[int, dict[str, Any]] = {}
-        self.recent_incidents: dict[int, Deque[dict[str, Any]]] = defaultdict(
+        self.recent_incidents: dict[int, deque[dict[str, Any]]] = defaultdict(
             lambda: deque(maxlen=25)
         )
         self.background_tasks: set[asyncio.Task] = set()
@@ -200,7 +201,7 @@ class AntiSpam(commands.Cog):
 
     def get_config(
         self, guild_id: int, *, create: bool = False
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         config = self.config.get(guild_id)
         if config is None and create:
             config = recommended_config()
@@ -321,9 +322,9 @@ class AntiSpam(commands.Cog):
 
     @staticmethod
     def _bounded_bucket(
-        mapping: MutableMapping[Any, Deque[Any]],
+        mapping: MutableMapping[Any, deque[Any]],
         key: Any,
-    ) -> Deque[Any]:
+    ) -> deque[Any]:
         """Return a state bucket while bounding adversarial key growth."""
         if key not in mapping and len(mapping) >= MAX_STATE_KEYS:
             mapping.pop(next(iter(mapping)))
@@ -361,7 +362,7 @@ class AntiSpam(commands.Cog):
     def configuration_warnings(
         self,
         guild: discord.Guild,
-        config: Optional[Mapping[str, Any]] = None,
+        config: Mapping[str, Any] | None = None,
     ) -> list[str]:
         config = config or self.get_config(guild.id) or {}
         warnings = []
@@ -803,14 +804,14 @@ class AntiSpam(commands.Cog):
 
     @staticmethod
     def _prune_records(
-        records: Deque[MessageRecord], cutoff: float
+        records: deque[MessageRecord], cutoff: float
     ) -> None:
         while records and records[0].timestamp < cutoff:
             records.popleft()
 
     @staticmethod
     def _replace_record(
-        records: Deque[MessageRecord], record: MessageRecord
+        records: deque[MessageRecord], record: MessageRecord
     ) -> None:
         for existing in tuple(records):
             if existing.id == record.id:
@@ -1903,7 +1904,7 @@ class AntiSpam(commands.Cog):
         message: discord.Message,
         *,
         from_edit: bool = False,
-        targets: Optional[set[int]] = None,
+        targets: set[int] | None = None,
     ) -> None:
         if (
             not message.guild

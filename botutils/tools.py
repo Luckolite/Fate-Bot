@@ -37,7 +37,6 @@ import re
 from copy import deepcopy
 from datetime import datetime, timedelta
 from time import time
-from typing import List, Optional, Tuple, Union
 from unicodedata import normalize
 
 import discord
@@ -71,7 +70,7 @@ class PersistentTasks:
                 self.run(**kwargs)
 
     def run(self, **kwargs) -> asyncio.Task:
-        if duration := kwargs.get("sleep_for", None):
+        if duration := kwargs.get("sleep_for"):
             if isinstance(duration, int):
                 duration = kwargs["sleep_for"] = datetime.now() + timedelta(seconds=duration)
         key = kwargs[self.identifier]
@@ -86,13 +85,13 @@ class PersistentTasks:
         self.tasks[key] = task
         return task
 
-    async def cancel(self, key: Union[int, str]) -> None:
+    async def cancel(self, key: int | str) -> None:
         if task := self.tasks.pop(key, None):
             task.cancel()
         if key in self.db:
             await self.db.remove(key)
 
-    async def _run(self, key: Union[int, str], **kwargs):
+    async def _run(self, key: int | str, **kwargs):
         finished = False
         try:
             await self.db.flush()
@@ -185,7 +184,7 @@ class Cooldown:
         return False
 
 
-def cooldowns(rate_limits: List[Tuple]) -> List[Cooldown]:
+def cooldowns(rate_limits: list[tuple]) -> list[Cooldown]:
     """
     Converts a list of rate limits into a list of Cooldown objects.
     E.g. [(limit, within_timeframe), ...]
@@ -219,23 +218,19 @@ class Formatting:
             emoji = arrow() + " "
         elif emoji is False:
             emoji = ""
-        result = ""
-        for k, v in data.items():
-            if v:
-                result += f"\n{emoji}**{k}:** {v}"
-            else:
-                result += f"\n{emoji}{k}"
-        if emoji == "<:enter:673955417994559539> ":
-            lines = result.splitlines()
-            result = []
-            for i, line in enumerate(lines):
-                if i + 1 == len(lines):
-                    line = line.replace(emoji, botutils.emojis.reply)
-                else:
-                    line = line.replace(emoji, botutils.emojis.creply)
-                result.append(line)
-            result = "\n".join(result)
-        return result
+        formatted = "".join(
+            f"\n{emoji}**{key}:** {value}" if value else f"\n{emoji}{key}"
+            for key, value in data.items()
+        )
+        if emoji != "<:enter:673955417994559539> ":
+            return formatted
+
+        lines = formatted.splitlines()
+        rendered_lines = []
+        for index, line in enumerate(lines):
+            branch = botutils.emojis.reply if index == len(lines) - 1 else botutils.emojis.creply
+            rendered_lines.append(line.replace(emoji, branch))
+        return "\n".join(rendered_lines)
 
     def add_field(self, embed, name: str, value: dict, inline=True):
         embed.add_field(name=f"◈ {name}", value=self.format_dict(value), inline=inline)
@@ -298,7 +293,7 @@ def s(var: int) -> str:
         return "s"
     return ""
 
-def url_from(obj: Optional[discord.Asset]):
+def url_from(obj: discord.Asset | None):
     """ Transforms an object with a possible .url attribute into something usable in embeds """
     return getattr(obj, "url", None)
 
@@ -412,7 +407,7 @@ formulas = {
 }
 
 
-def extract_time(string: str) -> Optional[int]:
+def extract_time(string: str) -> int | None:
     string = string.replace(" ", "")[:20]
     for human_form, operator in operators.items():
         string = string.replace(human_form, operator)
@@ -478,7 +473,7 @@ def total_seconds(now, before):
     return secs[: secs.find(".") + 2]
 
 
-async def get_user_rewrite(ctx, target: str = None) -> Union[discord.User, discord.Member]:
+async def get_user_rewrite(ctx, target: str = None) -> discord.User | discord.Member:
     """ Grab a user by id, name, or username, and convert to Member if possible """
     if not target:
         user = ctx.author
@@ -518,7 +513,7 @@ def get_time(seconds):
     return format_date(seconds=seconds)
 
 
-async def get_role(ctx, name) -> Optional[discord.Role]:
+async def get_role(ctx, name) -> discord.Role | None:
     if name.startswith("<@"):
         role_id = "".join(char for char in name if char.isdigit())
         return ctx.guild.get_role(int(role_id)) if role_id else None

@@ -76,7 +76,7 @@ class Leave(commands.Cog):
         self.images = {}
         self.format = {}
         if isfile("./data/userdata/leave.json"):
-            with open("./data/userdata/leave.json", "r") as f:
+            with open("./data/userdata/leave.json") as f:
                 dat = json.load(f)
                 if "toggle" in dat:
                     self.toggle = dat["toggle"]

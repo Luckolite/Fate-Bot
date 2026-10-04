@@ -8,7 +8,6 @@ A module for configuring where message related functions go
 :license: Proprietary, see LICENSE for details
 """
 
-from typing import *
 from copy import copy
 
 from discord.ext import commands
@@ -24,7 +23,7 @@ class Messages(commands.Cog):
     # True:  Send to the channel it occured in
     # False: Don't send at all
     # Int:   The channel_id to send to
-    default_modules: Dict[str, Union[bool, int]] = {
+    default_modules: dict[str, bool | int] = {
         "level_up_messages": False,
         "redirect_mod_commands": False
     }
@@ -62,7 +61,7 @@ class ConfigUI(AuthorView):
             self.config: Messages.config = ctx.cog.config  # type: ignore
 
             config = self.config.get(ctx.guild.id, copy(Messages.default_modules))
-            options: List[SelectOption] = [
+            options: list[SelectOption] = [
                 SelectOption(
                     label=option.replace("_", " ").title(),
                     description=self.option_description(value),
@@ -79,7 +78,7 @@ class ConfigUI(AuthorView):
 
             )
 
-        def option_description(self, value: Union[bool, None, int]) -> str:
+        def option_description(self, value: bool | None | int) -> str:
             """ Gets the description of a setting """
             if value is True:
                 return "Send in the channel it occured"

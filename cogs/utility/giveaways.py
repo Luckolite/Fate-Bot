@@ -16,7 +16,6 @@ import secrets
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from os import path
-from typing import Optional
 from weakref import WeakValueDictionary
 
 import discord
@@ -142,7 +141,7 @@ class Giveaways(commands.Cog):
         self.path = "./data/userdata/giveaways.json"
         self.data = {}
         if path.isfile(self.path):
-            with open(self.path, "r", encoding="utf-8") as file:
+            with open(self.path, encoding="utf-8") as file:
                 self.data = json.load(file)
         self.data, self._migration_pending = self.normalize_data(self.data)
         self.resume_fetch_lock = asyncio.Lock()
@@ -267,10 +266,10 @@ class Giveaways(commands.Cog):
             self.bot.remove_view(view)
         view.stop()
 
-    def get_giveaway(self, guild_id, giveaway_id) -> Optional[dict]:
+    def get_giveaway(self, guild_id, giveaway_id) -> dict | None:
         return self.data.get(str(guild_id), {}).get(str(giveaway_id))
 
-    def resolve_giveaway(self, guild_id, query: str) -> tuple[Optional[str], Optional[dict]]:
+    def resolve_giveaway(self, guild_id, query: str) -> tuple[str | None, dict | None]:
         lookup = snowflake_from(query)
         for giveaway_id, data in self.data.get(str(guild_id), {}).items():
             if giveaway_id == lookup or str(data.get("message_id")) == lookup:
@@ -325,7 +324,7 @@ class Giveaways(commands.Cog):
         message = await channel.fetch_message(int(data["message_id"]))
         return channel, message
 
-    def eligibility_error(self, member: discord.Member, data: dict) -> Optional[str]:
+    def eligibility_error(self, member: discord.Member, data: dict) -> str | None:
         if member.bot:
             return "Bots cannot enter giveaways."
         role_ids = {role.id for role in member.roles}
@@ -381,7 +380,7 @@ class Giveaways(commands.Cog):
         self,
         guild: discord.Guild,
         data: dict,
-        message: Optional[discord.Message] = None,
+        message: discord.Message | None = None,
     ) -> list[discord.Member]:
         entrant_ids = {int(user_id) for user_id in data.get("entrants", [])}
         if data.get("entry_mode") == "reaction" and message:
@@ -680,16 +679,16 @@ class Giveaways(commands.Cog):
         channel: discord.TextChannel,
         winners: int,
         duration: str,
-        required_role: Optional[discord.Role] = None,
-        blocked_role: Optional[discord.Role] = None,
-        bonus_role: Optional[discord.Role] = None,
+        required_role: discord.Role | None = None,
+        blocked_role: discord.Role | None = None,
+        bonus_role: discord.Role | None = None,
         bonus_entries: int = 0,
-        winner_role: Optional[discord.Role] = None,
-        ping_role: Optional[discord.Role] = None,
+        winner_role: discord.Role | None = None,
+        ping_role: discord.Role | None = None,
         minimum_account_age_hours: int = 0,
         minimum_server_age_hours: int = 0,
-        image_url: Optional[str] = None,
-        description: Optional[str] = None,
+        image_url: str | None = None,
+        description: str | None = None,
         dm_winners: bool = True,
         *,
         prize: str,
@@ -719,16 +718,16 @@ class Giveaways(commands.Cog):
         channel: discord.TextChannel,
         winners: int,
         duration: str,
-        required_role: Optional[discord.Role] = None,
-        blocked_role: Optional[discord.Role] = None,
-        bonus_role: Optional[discord.Role] = None,
+        required_role: discord.Role | None = None,
+        blocked_role: discord.Role | None = None,
+        bonus_role: discord.Role | None = None,
         bonus_entries: int = 0,
-        winner_role: Optional[discord.Role] = None,
-        ping_role: Optional[discord.Role] = None,
+        winner_role: discord.Role | None = None,
+        ping_role: discord.Role | None = None,
         minimum_account_age_hours: int = 0,
         minimum_server_age_hours: int = 0,
-        image_url: Optional[str] = None,
-        description: Optional[str] = None,
+        image_url: str | None = None,
+        description: str | None = None,
         dm_winners: bool = True,
         *,
         prize: str,

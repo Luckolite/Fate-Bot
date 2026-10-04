@@ -15,10 +15,11 @@ import re
 import sqlite3
 import threading
 from collections import defaultdict
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from pathlib import Path
 from time import monotonic, time
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 from pymongo import monitoring
 

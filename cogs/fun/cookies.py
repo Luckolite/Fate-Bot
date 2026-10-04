@@ -33,7 +33,7 @@ class Cookies(commands.Cog):
     @commands.bot_has_permissions(embed_links=True, attach_files=True)
     async def cookie(self, ctx, user: discord.Member = None):
         e = discord.Embed(color=colors.fate)
-        e.set_footer(text=f"Powered by Cookie Mix")
+        e.set_footer(text="Powered by Cookie Mix")
         author_id = ctx.author.id
         if author_id not in self.dat:
             await self.setup(author_id)

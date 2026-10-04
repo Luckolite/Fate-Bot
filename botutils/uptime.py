@@ -7,9 +7,9 @@ import math
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
-Timestamp = Union[datetime, float, int]
+Timestamp = datetime | float | int
 
 
 class UptimeTracker:
@@ -17,14 +17,14 @@ class UptimeTracker:
 
     SCHEMA_VERSION = 1
 
-    def __init__(self, path: Union[str, Path], *, window_days: int = 30) -> None:
+    def __init__(self, path: str | Path, *, window_days: int = 30) -> None:
         if window_days <= 0:
             raise ValueError("window_days must be positive")
         self.path = Path(path)
         self.window_seconds = window_days * 24 * 60 * 60
-        self.observed_since: Optional[float] = None
-        self.sessions: list[dict[str, Optional[float]]] = []
-        self._active_session: Optional[dict[str, Optional[float]]] = None
+        self.observed_since: float | None = None
+        self.sessions: list[dict[str, float | None]] = []
+        self._active_session: dict[str, float | None] | None = None
         self._write_lock = threading.Lock()
         self._load()
 
@@ -43,7 +43,7 @@ class UptimeTracker:
         return result
 
     @staticmethod
-    def _optional_timestamp(value: Any) -> Optional[float]:
+    def _optional_timestamp(value: Any) -> float | None:
         if value is None:
             return None
         try:
@@ -186,7 +186,7 @@ class UptimeTracker:
                 intervals.append((start, end))
 
         online_seconds = 0.0
-        merged_end: Optional[float] = None
+        merged_end: float | None = None
         for start, end in sorted(intervals):
             if merged_end is None or start > merged_end:
                 online_seconds += end - start

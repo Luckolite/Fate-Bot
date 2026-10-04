@@ -29,13 +29,13 @@ class Audit(commands.Cog):
         view_audit_log=True, add_reactions=True, manage_messages=True
     )
     async def _audit(self, ctx, *args):
-        p = get_prefix(ctx)
+        prefix = get_prefix(ctx)
         if not args or len(args) > 2:
-            e = discord.Embed(color=colors.cyan)
-            e.set_author(name="Audit Log Data", icon_url=ctx.author.display_avatar.url)
+            embed = discord.Embed(color=colors.cyan)
+            embed.set_author(name="Audit Log Data", icon_url=ctx.author.display_avatar.url)
             if ctx.guild.icon:
-                e.set_thumbnail(url=ctx.guild.icon.url)
-            e.add_field(
+                embed.set_thumbnail(url=ctx.guild.icon.url)
+            embed.add_field(
                 name="◈ Commands ◈",
                 value=".audit [action]\n"
                       ".audit [amount]\n"
@@ -43,33 +43,32 @@ class Audit(commands.Cog):
                       ".audit @user [amount]\n",
                 inline=False,
             )
-            e.add_field(
+            embed.add_field(
                 name="◈ Actions ◈",
                 value="Examples: kick, ban, message_delete\nFor a full list "
-                     f"run `{p}audit types`",
+                     f"run `{prefix}audit types`",
                 inline=False,
             )
-            return await ctx.send(embed=e)
+            return await ctx.send(embed=embed)
 
         if args[0] == "types":
-            return await ctx.send(f", ".join(self.perms))
+            return await ctx.send(", ".join(self.perms))
 
-        _audit = discord.AuditLogAction
+        audit_actions = discord.AuditLogAction
         entries = []
-        counter = 0
         log_type = None
         user = None
         limit = 1
 
         if len(args) == 1:
             if not args[0].isdigit() and args[0] not in self.perms:
-                return await ctx.send(f"That's not an event. Run `{p}audit types`")
+                return await ctx.send(f"That's not an event. Run `{prefix}audit types`")
             if args[0].isdigit():
                 limit = int(args[0])
                 if limit > 50:
                     limit = 50
             elif args[0] in self.perms:
-                log_type = getattr(_audit, args[0])
+                log_type = getattr(audit_actions, args[0])
 
         elif len(args) == 2:
             if "@" in args[0]:
@@ -79,7 +78,7 @@ class Audit(commands.Cog):
                 except discord.errors.NotFound:
                     return await ctx.send("User not found")
             elif args[0] in self.perms:
-                log_type = getattr(_audit, args[0])
+                log_type = getattr(audit_actions, args[0])
             else:
                 return await ctx.send("Invalid usage")
             if not args[1].isdigit():
@@ -94,39 +93,36 @@ class Audit(commands.Cog):
             if user:
                 if hasattr(entry, "user") and entry.user and entry.user.id == user.id:
                     entries.append(entry)
-                    counter += 1
                 elif hasattr(entry, "target") and entry.target and entry.target.id == user.id:
                     entries.append(entry)
-                    counter += 1
             else:
                 entries.append(entry)
-                counter += 1
-            if counter == limit:
+            if len(entries) == limit:
                 break
         if not entries:
             return await ctx.send("Nothing found")
 
         def create_embed():
-            e = discord.Embed(color=self.bot.config["theme_color"])
-            e.set_author(name="AuditLog Results", icon_url=ctx.author.display_avatar.url)
+            embed = discord.Embed(color=self.bot.config["theme_color"])
+            embed.set_author(name="AuditLog Results", icon_url=ctx.author.display_avatar.url)
             if ctx.guild.icon:
-                e.set_thumbnail(url=ctx.guild.icon.url)
-            e.description = "\n".join(_page)
-            e.set_footer(text=f"Page 1/{len(pages)}")
-            pages.append(e)
+                embed.set_thumbnail(url=ctx.guild.icon.url)
+            embed.description = "\n".join(page_lines)
+            embed.set_footer(text=f"Page 1/{len(pages)}")
+            pages.append(embed)
 
         pages = []
-        _page = []
-        for i, entry in enumerate(entries):
+        page_lines = []
+        for entry in entries:
             target = entry.target
             if isinstance(target, discord.Object):
                 target = target.id
             line = f"{entry.user} {entry.action.name} to {target}"
-            _page.append(line)
-            if len(_page) == 9:
+            page_lines.append(line)
+            if len(page_lines) == 9:
                 create_embed()
-                _page = []
-        if _page:
+                page_lines = []
+        if page_lines:
             create_embed()
 
         async def add_emojis_task():

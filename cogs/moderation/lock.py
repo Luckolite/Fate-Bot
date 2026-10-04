@@ -100,7 +100,7 @@ class Lock(commands.Cog):
             self.lock[guild_id][lock] = {"age_lmt": min_age}
 
         if lock != "lockdown":
-            await ctx.send(f"Locked the server")
+            await ctx.send("Locked the server")
         await self.lock.flush()
 
         # Check members that have already joined

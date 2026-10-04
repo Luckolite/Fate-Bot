@@ -16,7 +16,6 @@ from contextlib import suppress
 from functools import lru_cache
 from string import printable
 from time import time
-from typing import Dict, Optional, Set, Tuple, Union
 from unicodedata import normalize
 
 import discord
@@ -74,7 +73,7 @@ FILTER_OPTIONS = {
 
 
 @lru_cache(maxsize=1024)
-def safe_regex_query(pattern: str) -> Optional[str]:
+def safe_regex_query(pattern: str) -> str | None:
     """Build the legacy wildcard query and reject costly regex structures."""
     query = pattern.replace("*", "{0,16}").replace("+", "{1,16}").replace("\n", "")
     for match in re.findall(r"{([0-9]+), ?([0-9]+)}", query):
@@ -131,9 +130,9 @@ class ChatFilter(commands.Cog):
         self.bot = bot
         self.config = bot.utils.cache("chatfilter")
         self.chatfilter_usage = self._chatfilter
-        self.webhooks: Dict[int, discord.Webhook] = {}
+        self.webhooks: dict[int, discord.Webhook] = {}
 
-        self.phishing_urls: Set[str] = set()
+        self.phishing_urls: set[str] = set()
 
     async def cog_load(self):
         changed = False
@@ -277,7 +276,7 @@ class ChatFilter(commands.Cog):
                     break
         return content
 
-    async def run_default_filter(self, guild_id: int, content: str) -> Tuple[Optional[str], Optional[list]]:
+    async def run_default_filter(self, guild_id: int, content: str) -> tuple[str | None, list | None]:
         """ Filters the content of a message without using regex to prevent false flags """
         if guild_id not in self.config:
             return None, None
@@ -311,14 +310,14 @@ class ChatFilter(commands.Cog):
                 return await self.clean_content(content, phrase), [phrase]
         return None, None
 
-    async def run_regex_filter(self, guild_id: int, content: str) -> Tuple[Optional[str], Optional[list]]:
+    async def run_regex_filter(self, guild_id: int, content: str) -> tuple[str | None, list | None]:
         """ A more thorough filter to better flag bypasses """
         if guild_id not in self.config:
             return None, None
         if self.normalize_config(self.config[guild_id]):
             await self.config.flush()
 
-        def run_regex(query: str) -> Optional[str]:
+        def run_regex(query: str) -> str | None:
             result = re.search(query, search_content)
             if result:
                 return result.group()
@@ -417,7 +416,7 @@ class ChatFilter(commands.Cog):
     )
     @commands.has_permissions(manage_messages=True)
     @commands.bot_has_permissions(manage_messages=True)
-    async def _ignore(self, ctx, *targets: Union[discord.User, discord.Role, discord.TextChannel]):
+    async def _ignore(self, ctx, *targets: discord.User | discord.Role | discord.TextChannel):
         guild_id = ctx.guild.id
         if guild_id not in self.config:
             return await ctx.send("Chatfilter isn't enabled")
@@ -439,7 +438,7 @@ class ChatFilter(commands.Cog):
     )
     @commands.has_permissions(manage_messages=True)
     @commands.bot_has_permissions(manage_messages=True)
-    async def _unignore(self, ctx, *targets: Union[discord.User, discord.Role, discord.TextChannel]):
+    async def _unignore(self, ctx, *targets: discord.User | discord.Role | discord.TextChannel):
         guild_id = ctx.guild.id
         if guild_id not in self.config:
             return await ctx.send("This server has no ignored targets")
@@ -749,7 +748,7 @@ class ChatFilter(commands.Cog):
         await self.on_message(after)
 
     @commands.Cog.listener()
-    async def on_member_update(self, _before: Optional[Member], after: Member) -> None:
+    async def on_member_update(self, _before: Member | None, after: Member) -> None:
         """ Resets a members nickname if it has a filtered word, or phrase """
         if after.nick and after.guild.id in self.config:
             if (bot := after.guild.me) and bot.guild_permissions.manage_nicknames:
@@ -780,8 +779,8 @@ class ChatFilterMenu(ui.View):
         self.guild = ctx.guild
         self.user = ctx.author
         self.config = None
-        self.message: Optional[discord.Message] = None
-        self.notice: Optional[str] = None
+        self.message: discord.Message | None = None
+        self.notice: str | None = None
 
     async def start(self):
         await self.refresh()
@@ -883,7 +882,7 @@ class ChatFilterMenu(ui.View):
             visible.append(f"*...and {len(phrases) - len(visible):,} more*.")
         return ", ".join(visible)
 
-    def _ignored_preview(self) -> Optional[str]:
+    def _ignored_preview(self) -> str | None:
         visible = []
         for object_id in self.config["ignored"][:8]:
             target = (

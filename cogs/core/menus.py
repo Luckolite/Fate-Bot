@@ -10,8 +10,9 @@ An interactive command guide built with Discord views.
 
 import inspect
 import math
+from collections.abc import Generator
 from contextlib import suppress
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any
 
 import discord
 from discord import Embed, Interaction, Message, SelectOption, app_commands, ui
@@ -94,7 +95,7 @@ def is_public_help_command(command: Command) -> bool:
 class Menus(commands.Cog):
     """Handles the interactive help menu."""
 
-    structure: Dict[str, Any] = {}
+    structure: dict[str, Any] = {}
 
     def __init__(self, bot: Fate) -> None:
         self.bot = bot
@@ -107,7 +108,7 @@ class Menus(commands.Cog):
     async def on_ready(self) -> None:
         await self.restructure()
 
-    async def construct(self, item: Union[str, List[str]]) -> List[Command]:
+    async def construct(self, item: str | list[str]) -> list[Command]:
         """Convert one or more cog names into their commands."""
         items = []
         cog_names = [item] if isinstance(item, str) else item
@@ -159,7 +160,7 @@ class Menus(commands.Cog):
     @app_commands.describe(query="Command or keyword to open")
     @commands.cooldown(1, 10, commands.BucketType.user)
     @commands.bot_has_permissions(embed_links=True)
-    async def help(self, ctx: Context, *, query: Optional[str] = None) -> None:
+    async def help(self, ctx: Context, *, query: str | None = None) -> None:
         if not self.structure:
             await self.restructure()
         await HelpMenu(self.structure, ctx, query=query)
@@ -169,7 +170,7 @@ class Menus(commands.Cog):
         self,
         interaction: Interaction,
         current: str,
-    ) -> List[app_commands.Choice[str]]:
+    ) -> list[app_commands.Choice[str]]:
         current = current.casefold()
         matches = []
         for command in self.bot.walk_commands():
@@ -206,26 +207,26 @@ class HelpMenu(AuthorView):
 
     def __init__(
         self,
-        structure: Dict[str, Any],
+        structure: dict[str, Any],
         ctx: Context,
         *,
-        query: Optional[str] = None,
+        query: str | None = None,
     ) -> None:
         self.ctx = ctx
         self.bot: Fate = ctx.bot
         self.cd = Cooldown(4, 5)
-        self.message: Optional[Message] = None
+        self.message: Message | None = None
         self.structure = {
             key: value
             for key, value in structure.items()
             if key != "Dev"
         }
-        self.state: Union[Dict[str, Any], List[Command]] = self.structure
-        self.breadcrumbs: List[str] = []
-        self.history: List[Tuple[Any, List[str], int, Optional[Command]]] = []
+        self.state: dict[str, Any] | list[Command] = self.structure
+        self.breadcrumbs: list[str] = []
+        self.history: list[tuple[Any, list[str], int, Command | None]] = []
         self.page = 0
-        self.selected_command: Optional[Command] = None
-        self.query_miss: Optional[str] = None
+        self.selected_command: Command | None = None
+        self.query_miss: str | None = None
 
         super().__init__(timeout=300)
         if query and not self.open_query(query):
@@ -248,7 +249,7 @@ class HelpMenu(AuthorView):
     def visible(self, command: Command) -> bool:
         return is_public_help_command(command)
 
-    def command_list(self, value: Any = None) -> List[Command]:
+    def command_list(self, value: Any = None) -> list[Command]:
         value = self.structure if value is None else value
         if isinstance(value, list):
             return [command for command in value if self.visible(command)]
@@ -283,10 +284,10 @@ class HelpMenu(AuthorView):
             f"`{self.ctx.prefix}{parent}{alias}`" for alias in command.aliases
         )
 
-    def snapshot(self) -> Tuple[Any, List[str], int, Optional[Command]]:
+    def snapshot(self) -> tuple[Any, list[str], int, Command | None]:
         return self.state, list(self.breadcrumbs), self.page, self.selected_command
 
-    def restore(self, snapshot: Tuple[Any, List[str], int, Optional[Command]]) -> None:
+    def restore(self, snapshot: tuple[Any, list[str], int, Command | None]) -> None:
         self.state, self.breadcrumbs, self.page, self.selected_command = snapshot
 
     def push_history(self) -> None:
@@ -298,13 +299,13 @@ class HelpMenu(AuthorView):
         self.page = 0
         self.selected_command = None
 
-    def all_commands(self) -> List[Command]:
+    def all_commands(self) -> list[Command]:
         unique = {}
         for command in self.command_list():
             unique[command.qualified_name] = command
         return list(unique.values())
 
-    def search(self, query: str) -> List[Command]:
+    def search(self, query: str) -> list[Command]:
         query = query.strip().casefold()
         prefix = str(self.ctx.prefix).casefold()
         if query.startswith(prefix):
@@ -365,7 +366,7 @@ class HelpMenu(AuthorView):
             return 1
         return max(1, math.ceil(len(self.command_list(self.state)) / self.page_size))
 
-    def current_page(self) -> List[Command]:
+    def current_page(self) -> list[Command]:
         if not isinstance(self.state, list):
             return []
         start = self.page * self.page_size
@@ -470,7 +471,7 @@ class HelpMenu(AuthorView):
             return self.build_home_embed()
         return self.build_section_embed()
 
-    def select_options(self) -> List[SelectOption]:
+    def select_options(self) -> list[SelectOption]:
         if self.selected_command:
             return []
         if isinstance(self.state, dict):
@@ -556,7 +557,7 @@ class HelpSelect(ui.Select):
         self,
         menu: HelpMenu,
         *,
-        options: List[SelectOption],
+        options: list[SelectOption],
         placeholder: str,
     ) -> None:
         self.menu = menu
@@ -578,8 +579,8 @@ class HelpButton(ui.Button):
         menu: HelpMenu,
         action: str,
         *,
-        label: Optional[str] = None,
-        emoji: Optional[str] = None,
+        label: str | None = None,
+        emoji: str | None = None,
         style: discord.ButtonStyle = discord.ButtonStyle.secondary,
         row: int,
         disabled: bool = False,

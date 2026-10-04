@@ -18,7 +18,8 @@ from collections.abc import Iterable
 from contextlib import suppress
 from copy import deepcopy
 from time import monotonic
-from typing import Any, MutableMapping, Optional
+from typing import Any
+from collections.abc import MutableMapping
 
 import aiohttp
 from discord.http import HTTPClient
@@ -93,7 +94,7 @@ def normalize_language(value: Any) -> str:
     return language or DEFAULT_LANGUAGE
 
 
-def _language_from_locale(value: Any) -> Optional[str]:
+def _language_from_locale(value: Any) -> str | None:
     """Map a Discord locale to a supported translation language."""
     raw_locale = getattr(value, "value", value)
     locale = str(raw_locale or "").strip().replace("_", "-").lower()
@@ -147,7 +148,7 @@ def _protect_text(source: str) -> tuple[str, dict[str, str]]:
     return _PROTECTED_TEXT.sub(replace, source), protected
 
 
-def _restore_text(translated: str, protected: dict[str, str]) -> Optional[str]:
+def _restore_text(translated: str, protected: dict[str, str]) -> str | None:
     """Restore protected fragments or reject a damaged translation."""
     for marker, original in protected.items():
         if marker not in translated:
@@ -240,7 +241,7 @@ def _collect_payload_slots(payload: dict) -> list[tuple[dict, str, str]]:
 class LocalizationManager:
     """Translate and persist exact outbound strings for a Fate instance."""
 
-    def __init__(self, bot, *, cache: Optional[MutableMapping] = None):
+    def __init__(self, bot, *, cache: MutableMapping | None = None):
         self.bot = bot
         translation_config = bot.config.get("translation", {})
         if not isinstance(translation_config, dict):
@@ -256,7 +257,7 @@ class LocalizationManager:
         self.cache = cache if cache is not None else bot.utils.cache(
             "translations", auto_sync=True
         )
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
         self._inflight: dict[str, asyncio.Task[str]] = {}
         self._last_failure_log = 0.0
 
@@ -284,7 +285,7 @@ class LocalizationManager:
             now + _INTERACTION_TTL_SECONDS,
         )
 
-    def language_for_guild(self, guild_id: Optional[int]) -> str:
+    def language_for_guild(self, guild_id: int | None) -> str:
         if not guild_id:
             return DEFAULT_LANGUAGE
         cog = self.bot.get_cog("Settings")
@@ -295,7 +296,7 @@ class LocalizationManager:
             return DEFAULT_LANGUAGE
         return normalize_language(config.get("language"))
 
-    def guild_for_route(self, route) -> Optional[int]:
+    def guild_for_route(self, route) -> int | None:
         guild_id = getattr(route, "guild_id", None)
         if guild_id:
             return int(guild_id)
@@ -307,8 +308,8 @@ class LocalizationManager:
         return int(guild.id) if guild else None
 
     async def localize_payload(
-        self, payload: Optional[dict], guild_id: Optional[int]
-    ) -> Optional[dict]:
+        self, payload: dict | None, guild_id: int | None
+    ) -> dict | None:
         language = self.language_for_guild(guild_id)
         if language == DEFAULT_LANGUAGE or not isinstance(payload, dict):
             return payload
@@ -323,7 +324,7 @@ class LocalizationManager:
         return localized
 
     async def localize_multipart(
-        self, multipart: Any, guild_id: Optional[int]
+        self, multipart: Any, guild_id: int | None
     ) -> Any:
         language = self.language_for_guild(guild_id)
         if language == DEFAULT_LANGUAGE or not multipart:
@@ -352,7 +353,7 @@ class LocalizationManager:
         results: dict[str, str] = {}
         tasks: dict[str, asyncio.Task[str]] = {}
         owned_tasks: list[tuple[str, asyncio.Task[str]]] = []
-        batch_tasks: list[asyncio.Task[list[Optional[str]]]] = []
+        batch_tasks: list[asyncio.Task[list[str | None]]] = []
         missing: list[tuple[str, str]] = []
 
         for source in dict.fromkeys(sources):
@@ -469,7 +470,7 @@ class LocalizationManager:
 
     def _cached_translation(
         self, key: str, source: str, language: str
-    ) -> Optional[str]:
+    ) -> str | None:
         cached = self.cache.get(key)
         if (
             isinstance(cached, dict)
@@ -482,7 +483,7 @@ class LocalizationManager:
 
     async def _cache_batch_result(
         self,
-        batch_task: "asyncio.Task[list[Optional[str]]]",
+        batch_task: "asyncio.Task[list[str | None]]",
         index: int,
         key: str,
         source: str,
@@ -501,12 +502,12 @@ class LocalizationManager:
 
     async def _request_translation(
         self, source: str, language: str
-    ) -> Optional[str]:
+    ) -> str | None:
         return (await self._request_translations([source], language))[0]
 
     async def _request_translations(
         self, sources: list[str], language: str
-    ) -> list[Optional[str]]:
+    ) -> list[str | None]:
         if not sources:
             return []
         protected_sources: list[str] = []
@@ -560,7 +561,7 @@ class LocalizationManager:
             if len(parts) != len(sources):
                 raise ValueError("translation returned the wrong batch size")
 
-            restored_values: list[Optional[str]] = []
+            restored_values: list[str | None] = []
             for index, (part, protected) in enumerate(
                 zip(parts, protected_values)
             ):
@@ -618,7 +619,7 @@ class LocalizationManager:
             await flush()
 
 
-def _discard_expired_interactions(now: Optional[float] = None) -> None:
+def _discard_expired_interactions(now: float | None = None) -> None:
     now = monotonic() if now is None else now
     for token, (manager_ref, _guild_id, expires) in list(
         _INTERACTION_CONTEXTS.items()
@@ -627,7 +628,7 @@ def _discard_expired_interactions(now: Optional[float] = None) -> None:
             _INTERACTION_CONTEXTS.pop(token, None)
 
 
-def _interaction_context(token: Any) -> tuple[Optional[LocalizationManager], Optional[int]]:
+def _interaction_context(token: Any) -> tuple[LocalizationManager | None, int | None]:
     if not token:
         return None, None
     now = monotonic()

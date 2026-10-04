@@ -16,7 +16,7 @@ from contextlib import suppress
 from io import BytesIO
 from os import path
 from time import time
-from typing import *
+from typing import Any
 
 import discord
 from PIL import Image, ImageDraw, ImageFont
@@ -960,11 +960,6 @@ class Factions(commands.Cog):
             info += f"Land-Claims: ${dat['land_claims']}"
         if "alliances" in dat:
             info += f"\nAlliances: ${dat['alliances']}"
-        # for key, income in sorted(dat.items(), key=lambda kv: kv[1], reverse=True):
-        #     if key.isdigit():
-        #         user = self.bot.get_user(int(key))
-        #         if user:
-        #             info += f"\n{user.name}: ${income}"
         e = discord.Embed(color=purple)
         e.set_author(name="Income History", icon_url=self.get_factions_icon(ctx, faction))
         e.description = info
@@ -1127,7 +1122,7 @@ class Factions(commands.Cog):
         fac1 = await self.get_authors_faction(ctx)
         fac2 = await self.get_users_faction(ctx, user)
         if not fac2:
-            return await ctx.send(f"The other user needs to be in a faction in order to battle")
+            return await ctx.send("The other user needs to be in a faction in order to battle")
         if self.factions[guild_id][fac1]["balance"] < amount:
             return await ctx.send("Your faction needs at least $50 to battle")
         if self.factions[guild_id][fac2]["balance"] < amount:
@@ -1576,7 +1571,7 @@ class Factions(commands.Cog):
         additional = ""
         if len(results) > 1:
             additional += f". You have {len(results) - 1} redeemable votes remaining"
-        await ctx.send(f"Redeemed $250 for your faction" + additional)
+        await ctx.send("Redeemed $250 for your faction" + additional)
         await self.save_data()
 
     @factions.command(name="forage", description="Get a random small amount of money")
@@ -1736,7 +1731,7 @@ class Factions(commands.Cog):
         if faction_name in self.factions[guild_id][ally_name]["allies"]:
             return await ctx.send(f"You're already allied with `{ally_name}`")
         if len(self.factions[guild_id][faction_name]["allies"]) == 2:
-            return await ctx.send(f"At the moment, you can't exceed 3 alliances")
+            return await ctx.send("At the moment, you can't exceed 3 alliances")
         if len(self.factions[guild_id][ally_name]["allies"]) == 2:
             return await ctx.send(
                 "That faction has already reached its limit of alliances"
@@ -1814,7 +1809,7 @@ class Factions(commands.Cog):
 
 
 class Shop(ui.Select):
-    shelf: Dict[str, Dict[str, Any]] = {
+    shelf: dict[str, dict[str, Any]] = {
         "Extra Slots": {
             "cost": 250,
             "emoji": "👥",

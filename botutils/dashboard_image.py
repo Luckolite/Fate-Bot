@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from math import ceil
 from pathlib import Path
-from typing import Iterable, Sequence
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
 

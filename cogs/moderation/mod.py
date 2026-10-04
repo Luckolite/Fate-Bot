@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from os import path
 from string import printable
 from time import time as now
-from typing import *
+from typing import Any
 from unicodedata import normalize
 
 import discord
@@ -37,7 +37,7 @@ cache = {}  # Keep track of what commands are still being ran
 # This should empty out as quickly as it's filled
 
 
-def _root_command(command: str, subcommands: Dict[str, List[str]]) -> str:
+def _root_command(command: str, subcommands: dict[str, list[str]]) -> str:
     """Resolve a subcommand to the permission group used by its parent command."""
     return next(
         (parent for parent, children in subcommands.items() if command in children),
@@ -49,8 +49,6 @@ def check_if_running():
     """ Checks if the command is already in progress """
 
     async def predicate(ctx):
-        # with open(fp, 'r') as f:
-        #     cache = json.load(f)  # type: dict
         cmd = ctx.command.name
         if cmd not in cache:
             cache[cmd] = []
@@ -89,6 +87,7 @@ def has_required_permissions(**kwargs):
 
 
 def has_warn_permission():
+    """Allow configured moderators and administrators to issue warnings."""
     async def predicate(ctx):
         cls = globals()["cls"]  # type: Moderation
         config = cls.template
@@ -98,15 +97,13 @@ def has_warn_permission():
         if guild_id in cls.config:
             config = cls.config[guild_id]
         warn_access = config["commands"]["warn"]
-        if ctx.author.id in warn_access["users"]:
-            return True
-        elif any(role.id in warn_access["roles"] for role in ctx.author.roles):
-            return True
-        elif ctx.author.id in config["usermod"]:
-            return True
-        elif any(r.id in config["rolemod"] for r in ctx.author.roles):
-            return True
-        elif ctx.author.guild_permissions.administrator:
+        if (
+            ctx.author.id in warn_access["users"]
+            or any(role.id in warn_access["roles"] for role in ctx.author.roles)
+            or ctx.author.id in config["usermod"]
+            or any(role.id in config["rolemod"] for role in ctx.author.roles)
+            or ctx.author.guild_permissions.administrator
+        ):
             return True
         raise commands.CheckFailure("You lack administrator or usermod permissions to use this command")
 
@@ -117,6 +114,47 @@ def purge_confirmation_enabled(settings: dict) -> bool:
     """Default to the safer prompt unless the guild explicitly opts out."""
     value = settings.get("purge_confirmation", True)
     return value if type(value) is bool else True
+
+
+def _parse_mute_duration(reason: str) -> tuple[int | None, str | None, str]:
+    """Separate duration tokens from a mute reason and describe their total."""
+    tokens = re.findall(r"[0-9]+[smhd]", reason)
+    if not tokens:
+        return None, None, reason
+
+    units = {
+        "s": (1, "second"),
+        "m": (60, "minute"),
+        "h": (3600, "hour"),
+        "d": (86400, "day"),
+    }
+    duration = 0
+    descriptions = []
+    for token in tokens:
+        reason = reason.replace(token, "").strip(" ")
+        amount = token[:-1]
+        seconds, unit = units[token[-1]]
+        duration += int(amount) * seconds
+        descriptions.append(f"{amount} {unit if amount == '1' else unit + 's'}")
+    return duration, ", ".join(descriptions), reason
+
+
+async def _set_mute_role_overwrites(guild, mute_role, *, only_missing: bool):
+    """Set text and voice restrictions, retaining the existing channel pacing."""
+    for attribute, permission in (
+        ("text_channels", "send_messages"),
+        ("voice_channels", "speak"),
+    ):
+        for index, channel in enumerate(getattr(guild, attribute)):
+            if only_missing and (
+                not channel.permissions_for(guild.me).manage_channels
+                or mute_role in channel.overwrites
+            ):
+                continue
+            with suppress(Forbidden):
+                await channel.set_permissions(mute_role, **{permission: False})
+            if index + 1 >= len(getattr(guild, attribute)):
+                await asyncio.sleep(0.5)
 
 
 async def delete_purge_messages(channel, messages):
@@ -215,9 +253,9 @@ class ConfirmView(discord.ui.View):
 
 
 class Moderation(commands.Cog):
-    config: Dict[str, Dict[str, Any]]
-    tasks: Dict[str, Dict[str, Any]]
-    subs: Dict[str, List[str]]
+    config: dict[str, dict[str, Any]]
+    tasks: dict[str, dict[str, Any]]
+    subs: dict[str, list[str]]
 
     def __init__(self, bot: Fate):
         self.bot = bot
@@ -228,7 +266,7 @@ class Moderation(commands.Cog):
         self.tasks = {}
         self._purge_tasks = set()
         if path.isfile(self.path):
-            with open(self.path, "r") as f:
+            with open(self.path) as f:
                 self.config = json.load(f)  # type: dict
         self.timers = bot.utils.persistent_tasks(
             database="role_timers",
@@ -285,7 +323,7 @@ class Moderation(commands.Cog):
             },
             "warns": {},
             "warns_config": {},
-            "mute_role": None,  # type: Optional[None, discord.Role.id]
+            "mute_role": None,
             "timers": {},
             "mute_timers": {},
         }
@@ -358,7 +396,7 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     @commands.has_permissions(administrator=True)
     @commands.bot_has_permissions(embed_links=True)
-    async def addmod(self, ctx, target: Union[discord.Member, discord.Role] = None):
+    async def addmod(self, ctx, target: discord.Member | discord.Role = None):
         if not target:
             return await ctx.send("User or role not found")
         if ctx.author.id != ctx.guild.owner.id:
@@ -390,7 +428,7 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     @commands.has_permissions(administrator=True)
     @commands.bot_has_permissions(embed_links=True)
-    async def delmod(self, ctx, target: Union[discord.Member, discord.Role] = None):
+    async def delmod(self, ctx, target: discord.Member | discord.Role = None):
         if not target:
             return await ctx.send("User or role not found")
         if ctx.author.id != ctx.guild.owner.id:
@@ -442,28 +480,6 @@ class Moderation(commands.Cog):
             )
         await ctx.send(embed=e)
 
-    # @commands.is_owner()
-    # async def test_purge(
-    #         self, ctx,
-    #         target: Optional[User],
-    #         method: Optional[Literal[
-    #             "images",
-    #             "embeds",
-    #             "stickers",
-    #             "mentions",
-    #             "users",
-    #             "bots"
-    #         ]],
-    #         phrase: Optional[str],
-    #         amount: int
-    # ):
-    #     await ctx.send(
-    #         f"Target: {target}\n"
-    #         f"Method: {method}\n"
-    #         f"Phrase: {phrase}\n"
-    #         f"Amount: {amount}"
-    #     )
-
     @commands.hybrid_command(name="purge", aliases=["prune", "nuke", "clear"], description="Bulk deletes messages")
     @commands.cooldown(2, 5, commands.BucketType.user)
     @check_if_running()
@@ -514,12 +530,7 @@ class Moderation(commands.Cog):
             return await ctx.send(embed=_help)
 
         args = [str(arg).lower() for arg in args]
-        if ctx.message.reference:
-            amount_to_purge = "1000"
-            if args:
-                amount_to_purge = args[len(args) - 1]
-        else:
-            amount_to_purge = args[len(args) - 1]
+        amount_to_purge = args[-1]
         if not after and not amount_to_purge.isdecimal():
             return await ctx.send(f"{amount_to_purge} isn't a proper number")
         if after:
@@ -531,6 +542,7 @@ class Moderation(commands.Cog):
                 f"This server has a purge limit of {purge_limit:,} messages"
             )
         special_check = None
+        target_amount = None
         msgs = []
         if len(args) > 1:
             if ctx.message.raw_mentions:
@@ -550,13 +562,12 @@ class Moderation(commands.Cog):
             elif "sticker" in args or "stickers" in args:
                 special_check = lambda msg: msg.stickers
             else:
-                phrase = " ".join(args[: len(args) - 1])
+                phrase = " ".join(args[:-1])
                 special_check = lambda msg: phrase in str(msg.content).lower()
-            old_amount = int(amount_to_purge)
+            target_amount = int(amount_to_purge)
             amount_to_purge = 250
 
         reaction_purge = "reaction" in args or "reactions" in args
-        target_amount = old_amount if len(args) > 1 else None
         preview = []
         history_kwargs = {
             "limit": amount_to_purge,
@@ -777,23 +788,7 @@ class Moderation(commands.Cog):
                     except discord.errors.HTTPException:
                         return await ctx.send("Failed to create the mute role. Operation cancelled")
 
-                    # Set the overwrites for the mute role
-                    for i, channel in enumerate(ctx.guild.text_channels):
-                        with suppress(discord.errors.Forbidden):
-                            await channel.set_permissions(
-                                mute_role, send_messages=False
-                            )
-                        if i + 1 >= len(
-                            ctx.guild.text_channels
-                        ):  # Prevent sleeping after the last
-                            await asyncio.sleep(0.5)
-                    for i, channel in enumerate(ctx.guild.voice_channels):
-                        with suppress(discord.errors.Forbidden):
-                            await channel.set_permissions(mute_role, speak=False)
-                        if i + 1 >= len(
-                            ctx.guild.voice_channels
-                        ):  # Prevent sleeping after the last
-                            await asyncio.sleep(0.5)
+                    await _set_mute_role_overwrites(ctx.guild, mute_role, only_missing=False)
 
                 if mute_role.position >= ctx.guild.me.top_role.position:
                     return await ctx.send(
@@ -801,64 +796,12 @@ class Moderation(commands.Cog):
                     )
                 self.config[guild_id]["mute_role"] = mute_role.id
 
-            # Setup the mute role in channels it's not in
-            for i, channel in enumerate(ctx.guild.text_channels):
-                if (
-                    not channel.permissions_for(ctx.guild.me).manage_channels
-                    or mute_role in channel.overwrites
-                ):
-                    continue
-                if mute_role not in channel.overwrites:
-                    with suppress(discord.errors.Forbidden):
-                        await channel.set_permissions(mute_role, send_messages=False)
-                    if i + 1 >= len(
-                        ctx.guild.text_channels
-                    ):  # Prevent sleeping after the last
-                        await asyncio.sleep(0.5)
-            for i, channel in enumerate(ctx.guild.voice_channels):
-                if (
-                    not channel.permissions_for(ctx.guild.me).manage_channels
-                    or mute_role in channel.overwrites
-                ):
-                    continue
-                if mute_role not in channel.overwrites:
-                    with suppress(discord.errors.Forbidden):
-                        await channel.set_permissions(mute_role, speak=False)
-                    if i + 1 >= len(
-                        ctx.guild.voice_channels
-                    ):  # Prevent sleeping after the last
-                        await asyncio.sleep(0.5)
+            await _set_mute_role_overwrites(ctx.guild, mute_role, only_missing=True)
 
             if mute_role.position >= ctx.guild.me.top_role.position:
                 return await ctx.send("The mute role's above my highest role so I can't manage it")
 
-            timers = []
-            timer = expanded_timer = None
-            for timer in [re.findall("[0-9]+[smhd]", arg) for arg in reason.split()]:
-                timers = [*timers, *timer]
-            if timers:
-                time_to_sleep = [0, []]
-                for timer in timers:
-                    reason = str(reason.replace(timer, "")).lstrip(" ").rstrip(" ")
-                    raw = "".join(x for x in list(timer) if x.isdigit())
-                    if "d" in timer:
-                        time = int(timer.replace("d", "")) * 60 * 60 * 24
-                        _repr = "day"
-                    elif "h" in timer:
-                        time = int(timer.replace("h", "")) * 60 * 60
-                        _repr = "hour"
-                    elif "m" in timer:
-                        time = int(timer.replace("m", "")) * 60
-                        _repr = "minute"
-                    else:  # 's' in timer
-                        time = int(timer.replace("s", ""))
-                        _repr = "second"
-                    time_to_sleep[0] += time
-                    time_to_sleep[1].append(
-                        f"{raw} {_repr if raw == '1' else _repr + 's'}"
-                    )
-                timer, expanded_timer = time_to_sleep
-                expanded_timer = ", ".join(expanded_timer)
+            timer, expanded_timer, reason = _parse_mute_duration(reason)
 
         if not reason:
             reason = "Unspecified"
@@ -905,14 +848,14 @@ class Moderation(commands.Cog):
             if result:
                 usr_additional += f" [use .appeal {case} if this was a mistake]"
 
-            if not timers:
+            if timer is None:
                 try:
                     await user.send(f"You've been muted in {ctx.guild} for {reason}" + usr_additional)
-                except:
+                except Exception:
                     additional += " (Unable to notify user via DM)"
                 self.bot.suppressed.append(mute_role.id)
                 await user.add_roles(mute_role)
-                logger: Optional[Logger] = self.bot.get_cog("Logger")  # type: ignore
+                logger: Logger | None = self.bot.get_cog("Logger")  # type: ignore
                 if logger:
                     await logger.on_mute(ctx, user, expanded_timer, reason)
                 await ctx.send(
@@ -929,7 +872,7 @@ class Moderation(commands.Cog):
                 )
             self.bot.suppressed.append(mute_role.id)
             await user.add_roles(mute_role)
-            logger: Optional[Logger] = self.bot.get_cog("Logger")  # type: ignore
+            logger: Logger | None = self.bot.get_cog("Logger")  # type: ignore
             if logger:
                 await logger.on_mute(ctx, user, expanded_timer, reason)
             await ensure_muted()
@@ -942,7 +885,7 @@ class Moderation(commands.Cog):
             }
             try:
                 await user.send(f"You've been muted in {ctx.guild} for {expanded_timer} for {reason}" + usr_additional)
-            except:
+            except Exception:
                 additional += " (Unable to notify user via DM)"
             if updated:
                 await ctx.send(
@@ -1031,7 +974,7 @@ class Moderation(commands.Cog):
                 return await ctx.send(f"{user.display_name} is not muted")
             self.bot.suppressed.append(mute_role.id)
             await user.remove_roles(mute_role)
-            logger: Optional[Logger] = self.bot.get_cog("Logger")  # type: ignore
+            logger: Logger | None = self.bot.get_cog("Logger")  # type: ignore
             if logger:
                 await logger.on_unmute(ctx, user)
             if user_id in self.config[guild_id]["mute_timers"]:
@@ -1050,11 +993,11 @@ class Moderation(commands.Cog):
     @check_if_running()
     @has_required_permissions(kick_members=True)
     @commands.bot_has_permissions(embed_links=True, kick_members=True)
-    async def kick(self, ctx, members: Greedy[Union[discord.Member, discord.User]], *, reason="Unspecified"):
+    async def kick(self, ctx, members: Greedy[discord.Member | discord.User], *, reason="Unspecified"):
         if not members:
             return await ctx.send("You need to properly specify who to kick")
         e = discord.Embed(color=colors.fate)
-        e.set_author(name=f"Kicking members", icon_url=ctx.author.display_avatar.url)
+        e.set_author(name="Kicking members", icon_url=ctx.author.display_avatar.url)
         msg = await ctx.send(embed=e)
         e.description = ""
         for i, member in enumerate(members):
@@ -1480,7 +1423,7 @@ class Moderation(commands.Cog):
         if not role:
             e = discord.Embed(color=colors.fate)
             e.set_author(name="MassRole Usages", icon_url=ctx.author.display_avatar.url)
-            e.description = f"Add, or remove roles from members in mass"
+            e.description = "Add, or remove roles from members in mass"
             p = get_prefix(ctx)
             e.add_field(name=f"{p}massrole @Role", value="Mass adds roles")
             e.add_field(name=f"{p}massrole -@Role", value="Mass removes roles")
@@ -1603,7 +1546,7 @@ class Moderation(commands.Cog):
         if " " in role and (timer := extract_time(role.split()[::-1][0])):
             role = role.split()[0]
             if timer > 60 * 60 * 24 * 7:
-                return await ctx.send(f"You can't set a role timer longer than a week")
+                return await ctx.send("You can't set a role timer longer than a week")
             if timer < 60:
                 return await ctx.send("Role timer's can't be shorter than a minute")
         converter = commands.RoleConverter()
@@ -1751,7 +1694,7 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     @commands.has_permissions(administrator=True)
     @commands.bot_has_permissions(administrator=True)
-    async def rename(self, ctx, target: Union[Member, Role, TextChannel], *, new_name=""):
+    async def rename(self, ctx, target: Member | Role | TextChannel, *, new_name=""):
         if not isinstance(target, Member) and not new_name:
             return await ctx.send("You need to specify the new name after the target you're renaming")
         old_name = str(target.display_name if hasattr(target, "display_name") else target.name)
@@ -1792,7 +1735,7 @@ class Moderation(commands.Cog):
         total_warns = len(warns[user_id])
         await self.save_data()
 
-        logger: Optional[Logger] = self.bot.get_cog("Logger")  # type: ignore
+        logger: Logger | None = self.bot.get_cog("Logger")  # type: ignore
         if logger:
             await logger.on_warn(context, user, reason, total_warns)
 
@@ -2021,7 +1964,7 @@ class Moderation(commands.Cog):
 
 
 class MuteView(ui.View):
-    def __init__(self, ctx, user: Union[User, Member], case: int, reason: Optional[str], timer: Optional[int]):
+    def __init__(self, ctx, user: User | Member, case: int, reason: str | None, timer: int | None):
         self.ctx = ctx
         self.user = user
         self.case = case
@@ -2070,7 +2013,7 @@ class MuteView(ui.View):
 
 class TimerView(ui.View):
     class SelectOptions(ui.Select):
-        timers: List[Tuple[Union[str, int]]] = [
+        timers: list[tuple[str | int]] = [
             ("Cancel", 0),
             ("5 Minutes", 60 * 5),
             ("15 Minutes", 60 * 15),
@@ -2167,7 +2110,7 @@ class TimerView(ui.View):
 
 class ReasonView(ui.View):
     class SelectOptions(ui.Select):
-        preset: List[Tuple[Union[str, str]]] = [
+        preset: list[tuple[str | str]] = [
             ("❎", "Cancel"),
             ("🔊", "Spamming"),
             ("⚔", "Raiding"),

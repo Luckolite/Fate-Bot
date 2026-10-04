@@ -25,10 +25,11 @@ import io
 import re
 import traceback
 from collections import OrderedDict, defaultdict, deque
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Iterable, Mapping
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import discord

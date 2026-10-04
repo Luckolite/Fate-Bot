@@ -10,7 +10,6 @@ Assigns configured roles to members when they join, immediately or after a delay
 
 import asyncio
 from contextlib import suppress
-from typing import Optional
 
 import discord
 from discord import Forbidden, NotFound, app_commands, ui
@@ -97,7 +96,7 @@ class AutoRole(commands.Cog):
         actor: discord.Member,
         role: discord.Role,
         delay: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         if error := self.validate_role(guild, actor, role):
             return error
 
@@ -170,7 +169,7 @@ class AutoRole(commands.Cog):
         self,
         ctx: commands.Context,
         role: discord.Role,
-        delay: Optional[str] = None,
+        delay: str | None = None,
     ):
         await ctx.defer()
         seconds = 0
@@ -194,7 +193,7 @@ class AutoRole(commands.Cog):
     async def _remove(
         self,
         ctx: commands.Context,
-        role: Optional[discord.Role] = None,
+        role: discord.Role | None = None,
     ):
         await ctx.defer()
         config = await self.get_config(ctx.guild.id, fresh=True)
@@ -327,7 +326,7 @@ class AutoRoleMenu(ui.View):
         self.guild = ctx.guild
         self.user = ctx.author
         self.config = None
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
         self.notice = None
 
     async def start(self):

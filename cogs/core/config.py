@@ -9,7 +9,6 @@ Commands for displaying and editing server configuration.
 """
 
 import asyncio
-from typing import Optional
 
 import discord
 from discord.ext import commands
@@ -83,7 +82,7 @@ class Config(commands.Cog):
         description="Shows or changes whether warnings expire after 30 days",
     )
     @commands.has_permissions(manage_guild=True)
-    async def _warns(self, ctx, expire: Optional[bool] = None):
+    async def _warns(self, ctx, expire: bool | None = None):
         moderation = self.bot.get_cog("Moderation")
         if moderation is None:
             return await ctx.send("The Moderation module is currently unavailable.")
