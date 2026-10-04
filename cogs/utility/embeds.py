@@ -1,6 +1,5 @@
 
 import asyncio
-from typing import *
 
 from discord import (
     Color,
@@ -19,7 +18,7 @@ from fate import Fate
 
 class Ask(ui.Modal):
     # add a third option to set the limit on each field value
-    def __init__(self, title: str, question: Union[str, list] = None, questions: list = None, limit: int = 4000):
+    def __init__(self, title: str, question: str | list = None, questions: list = None, limit: int = 4000):
         self.title = title
         super().__init__(timeout=60 * 15)
 
@@ -149,10 +148,6 @@ class EmbedCreatorView(ui.View):
                 questions = [
                     ("What should I set it as?", "Paste a URL here")
                 ]
-            # case "Convert To JSON":
-            #     file = File(BytesIO(dumps(self.embed.to_dict(), indent=2).encode()), filename="embed.json")
-            #     return await interaction.response.send_message(file=file, ephemeral=True)
-
         if not modal:
             title = "Embed " + " ".join(choice.split()[1:])
             if choice == "Add New Field":
@@ -177,10 +172,10 @@ class EmbedCreatorView(ui.View):
             case "Set Color":
                 try:
                     color = Color(int("0x" + value.replace("#", ""), 0))
-                except:
+                except ValueError:
                     return await modal.interaction.response.send_message(
-                    "That's not a valid HEX color", ephemeral=True
-                )
+                        "That's not a valid HEX color", ephemeral=True
+                    )
                 self.color = color
             case "Set Title":
                 self.title = value

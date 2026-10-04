@@ -29,11 +29,11 @@ class Suggestions(commands.Cog):
             'manage_messages'
         )
 
-        self.suggest_usage = f"> Make suggestions for your server. " \
-                             f"This needs setup by mods via `.suggestions` first.\n" \
-                             f"Usage: `.suggest [your suggestion]`"
-        self.suggestions_usage = f"> Setup a channel to receive suggestions from server members via `.suggest`\n" \
-                                 f"For full usage & how to setup run `.suggest`"
+        self.suggest_usage = "> Make suggestions for your server. " \
+                             "This needs setup by mods via `.suggestions` first.\n" \
+                             "Usage: `.suggest [your suggestion]`"
+        self.suggestions_usage = "> Setup a channel to receive suggestions from server members via `.suggest`\n" \
+                                 "For full usage & how to setup run `.suggest`"
 
     def is_enabled(self, guild_id):
         return guild_id in self.config
@@ -54,7 +54,7 @@ class Suggestions(commands.Cog):
         # Ensure the channel is functional
         channel = self.bot.get_channel(self.config[guild_id]["channel_id"])
         if not channel:
-            return await ctx.send(f"Failed to fetch the suggestions channel, maybe it was deleted?")
+            return await ctx.send("Failed to fetch the suggestions channel, maybe it was deleted?")
         perms = channel.permissions_for(ctx.guild.me)
         if not any(getattr(perms, perm) for perm in self.required):
             missing = [f"`{perm}`" for perm in self.required if not getattr(perms, perm)]
@@ -106,13 +106,13 @@ class Suggestions(commands.Cog):
         """Begin the setup process for a suggestions channel"""
         guild_id = ctx.guild.id
         if guild_id in self.config:
-            return await ctx.send(f"Suggestions is already enabled. To disable them run `.suggestions disable`")
+            return await ctx.send("Suggestions is already enabled. To disable them run `.suggestions disable`")
 
         # Get the channel they want to use
         await ctx.send(f"Mention the channel should I use for suggestions. (Ex: {ctx.channel.mention})")
         reply = await self.bot.utils.get_message(ctx)
         if not reply.channel_mentions:
-            return await ctx.send(f"You didn't mention any channels. You'll have to rerun the command")
+            return await ctx.send("You didn't mention any channels. You'll have to rerun the command")
         channel = reply.channel_mentions[0]
 
         # Check the bots permissions in that channel
@@ -131,8 +131,8 @@ class Suggestions(commands.Cog):
 
         # See if they want to limit suggestions to a role
         await ctx.send(
-            f"Should I require users to have a role in order to make suggestions? "
-            f"If not reply with `skip`, otherwise send the role name, or ping"
+            "Should I require users to have a role in order to make suggestions? "
+            "If not reply with `skip`, otherwise send the role name, or ping"
         )
         reply = await self.bot.utils.get_message(ctx)
         if reply.content.lower() == "skip":

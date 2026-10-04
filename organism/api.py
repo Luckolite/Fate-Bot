@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import math
 import secrets
+from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar
+from typing import TypeVar
 
 from .authority import LearningAuthority
 from .autonomic.coordinator import (

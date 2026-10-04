@@ -19,9 +19,9 @@ class Toggles(commands.Cog):
         self.bot = bot
 
     async def run_command(self, ctx, module, key) -> None:
-        for _module, commands in self.bot.toggles.items():
-            if _module.lower() == module.lower():
-                enable, disable = commands
+        for module_name, toggle_commands in self.bot.toggles.items():
+            if module_name.lower() == module.lower():
+                enable, disable = toggle_commands
                 break
         else:
             p = get_prefix(ctx)  # type: str

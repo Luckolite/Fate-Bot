@@ -8,7 +8,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 import pymysql
@@ -29,7 +29,7 @@ MYSQL_CONFIG_KEYS = frozenset(
 )
 
 
-def mysql_settings(auth: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+def mysql_settings(auth: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     """Merge public MySQL settings over encrypted authentication secrets."""
     auth_settings = auth.get("MySQL", {})
     config_settings = config.get("mysql", {})
@@ -44,7 +44,7 @@ def mysql_settings(auth: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, An
     return merged
 
 
-def _endpoint(value: str, default_port: int) -> Tuple[str, int, bool]:
+def _endpoint(value: str, default_port: int) -> tuple[str, int, bool]:
     raw = str(value or "").strip()
     if "://" not in raw:
         raw = f"mongodb://{raw}"
@@ -76,12 +76,12 @@ def _wait_for_port(host: str, port: int, process, timeout: float = 45) -> None:
     raise TimeoutError(f"Timed out waiting for local database at {host}:{port}")
 
 
-def _find_binary(root: Path, filename: str) -> Optional[Path]:
+def _find_binary(root: Path, filename: str) -> Path | None:
     matches = sorted((root / ".fate-test-services").glob(f"**/bin/{filename}"))
     return matches[0] if matches else None
 
 
-def _ensure_binaries(root: Path) -> Tuple[Path, Path]:
+def _ensure_binaries(root: Path) -> tuple[Path, Path]:
     mysql = _find_binary(root, "mysqld.exe")
     mongo = _find_binary(root, "mongod.exe")
     if mysql and mongo:
@@ -160,7 +160,7 @@ def _mysql_paths(
 def _start_mysql(
     root: Path,
     executable: Path,
-    sql: Dict[str, Any],
+    sql: dict[str, Any],
     storage_root: Path | None = None,
 ) -> None:
     host = str(sql.get("host", "127.0.0.1"))
@@ -213,7 +213,7 @@ def _mysql_connect(sql, *, root=False):
     )
 
 
-def _bootstrap_mysql(sql: Dict[str, Any]) -> None:
+def _bootstrap_mysql(sql: dict[str, Any]) -> None:
     try:
         connection = _mysql_connect(sql)
     except pymysql.MySQLError:
@@ -292,8 +292,8 @@ def _start_mongo(
 
 
 def ensure_local_databases(
-    auth: Dict[str, Any], config: Dict[str, Any], *, root: Path
-) -> Tuple[bool, bool]:
+    auth: dict[str, Any], config: dict[str, Any], *, root: Path
+) -> tuple[bool, bool]:
     """Start missing loopback databases and return ``(mysql_started, mongo_started)``."""
     environment_setting = os.environ.get("FATE_AUTO_START_DATABASES")
     if environment_setting is not None:

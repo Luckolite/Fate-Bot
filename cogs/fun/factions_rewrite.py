@@ -5,12 +5,13 @@ import hashlib
 import json
 import random
 import secrets
+from collections.abc import Mapping
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic, time
 from weakref import WeakValueDictionary
-from typing import Any, Mapping, Optional
+from typing import Any
 
 import discord
 from discord import Interaction, SelectOption, ui
@@ -188,7 +189,7 @@ def forage_inventory_size(inventory: Mapping[str, int]) -> int:
     return sum(max(0, int(amount)) for amount in inventory.values())
 
 
-def refresh_forage_energy(player: dict, now: Optional[int] = None) -> int:
+def refresh_forage_energy(player: dict, now: int | None = None) -> int:
     """Regenerate energy without allowing offline time to exceed the tool cap."""
     now = int(time() if now is None else now)
     tool_level = min(max(0, int(player.get("tool", 0))), len(FORAGE_TOOLS) - 1)
@@ -210,14 +211,14 @@ def refresh_forage_energy(player: dict, now: Optional[int] = None) -> int:
     return energy
 
 
-def forage_market_item(now: Optional[int] = None) -> str:
+def forage_market_item(now: int | None = None) -> str:
     """Select the same deterministic daily request in every server."""
     day = int(time() if now is None else now) // 86_400
     digest = hashlib.sha256(f"fate:global-forage:{day}".encode()).digest()
     return FORAGE_MARKET_ITEMS[int.from_bytes(digest[:4], "big") % len(FORAGE_MARKET_ITEMS)]
 
 
-def forage_sale_value(inventory: Mapping[str, int], demand_item: Optional[str] = None) -> int:
+def forage_sale_value(inventory: Mapping[str, int], demand_item: str | None = None) -> int:
     total = 0
     for item, raw_amount in inventory.items():
         if item not in FORAGE_ITEMS:
@@ -231,8 +232,8 @@ def forage_sale_value(inventory: Mapping[str, int], demand_item: Optional[str] =
 def create_forage_encounter(
     location_key: str,
     *,
-    now: Optional[int] = None,
-    rng: Optional[random.Random] = None,
+    now: int | None = None,
+    rng: random.Random | None = None,
 ) -> dict:
     """Create a small JSON-safe game that can resume from any server."""
     if location_key not in FORAGE_LOCATIONS:
@@ -318,10 +319,10 @@ def roll_forage_loot(
     location_key: str,
     tool_level: int,
     available_space: int,
-    rng: Optional[random.Random] = None,
+    rng: random.Random | None = None,
     *,
     bonus_rolls: int = 0,
-    rolls_override: Optional[int] = None,
+    rolls_override: int | None = None,
 ) -> dict[str, int]:
     """Roll a bounded expedition haul that can never overflow the pack."""
     if location_key not in FORAGE_LOCATIONS or available_space <= 0:
@@ -575,8 +576,8 @@ class Faction:
     slots: int
     is_public: bool
     bio: str
-    icon: Optional[str]
-    banner: Optional[str]
+    icon: str | None
+    banner: str | None
     income_multiplier: float
     compounding: bool
     work_income: int
@@ -680,7 +681,7 @@ class FactionRepository:
             await cursor.execute(sql, args)
             return cursor.rowcount
 
-    async def by_id(self, faction_id: int) -> Optional[Faction]:
+    async def by_id(self, faction_id: int) -> Faction | None:
         row = await self.one(
             f"SELECT {FACTION_COLUMNS} FROM factions WHERE id = %s", (faction_id,)
         )
@@ -701,7 +702,7 @@ class FactionRepository:
             int(row[offset + 1]), bool(row[offset + 2]),
         )
 
-    async def find(self, guild_id: int, name: str) -> Optional[Faction]:
+    async def find(self, guild_id: int, name: str) -> Faction | None:
         exact = await self.all(
             f"SELECT {FACTION_COLUMNS} FROM factions "
             "WHERE guild_id = %s AND LOWER(name) = LOWER(%s) LIMIT 3",
@@ -2507,8 +2508,8 @@ class ForageMenu(ui.LayoutView):
         self.user_id = ctx.author.id
         self.player: dict = {}
         self.page = "camp"
-        self.notice: Optional[str] = None
-        self.message: Optional[discord.Message] = None
+        self.notice: str | None = None
+        self.message: discord.Message | None = None
 
     async def start(self) -> None:
         await self.reload()
@@ -2916,10 +2917,10 @@ class ForageEncounterButton(ui.Button):
         menu: ForageMenu,
         action: str,
         label: str,
-        emoji: Optional[str],
+        emoji: str | None,
         style: discord.ButtonStyle,
         *,
-        choice: Optional[str] = None,
+        choice: str | None = None,
     ):
         super().__init__(label=label[:80], emoji=emoji, style=style)
         self.menu = menu

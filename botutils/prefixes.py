@@ -48,12 +48,12 @@ async def save_prefix(bot, collection, key, values):
 
 
 def get_prefix(_ctx):
-    """Deprecated"""
+    """Return the legacy default prefix; use get_prefixes_async for custom prefixes."""
     return "."
 
 
 async def get_prefixes_async(bot, msg):
-    """Cache the users prefix if not already cached"""
+    """Resolve configured prefixes, respecting the guild's personal-prefix override."""
     default_prefix = commands.when_mentioned_or(".")(bot, msg)
     prefixes = []
     override = False
@@ -72,10 +72,6 @@ async def get_prefixes_async(bot, msg):
     if not isinstance(msg.guild, discord.Guild):
         return prefixes if prefixes else default_prefix
 
-    # Parse the wanted prefixes
     if not prefixes:
         return default_prefix
-    return [
-        *commands.when_mentioned(bot, msg),
-        *prefixes
-    ]
+    return [*commands.when_mentioned(bot, msg), *prefixes]

@@ -6,8 +6,8 @@ import hashlib
 import hmac
 import json
 import secrets
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Mapping
 
 from .models import Feedback, bounded_text, parse_timestamp, timestamp_text, utc_now
 

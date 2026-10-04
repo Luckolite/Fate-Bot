@@ -9,7 +9,7 @@ import traceback
 from contextlib import suppress
 from copy import deepcopy
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import ui
@@ -158,23 +158,23 @@ class LoggerMenu(ui.View):
         self.ctx = ctx
         self.guild = ctx.guild
         self.user = ctx.author
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
         self.page = initial_page if initial_page in LOGGER_PAGES else "overview"
-        self.notice: Optional[str] = None
+        self.notice: str | None = None
 
         self.event_category = next(iter(cog.categories))
         self.selected_event = cog.categories[self.event_category][0]
-        self.event_search_results: Optional[list[str]] = None
+        self.event_search_results: list[str] | None = None
 
         self.command_page = 0
-        self.selected_command: Optional[commands.Command] = None
-        self.command_results: Optional[list[commands.Command]] = None
-        self.command_query: Optional[str] = None
-        self.history_stats: Optional[dict[str, Any]] = None
+        self.selected_command: commands.Command | None = None
+        self.command_results: list[commands.Command] | None = None
+        self.command_query: str | None = None
+        self.history_stats: dict[str, Any] | None = None
         self.embed = discord.Embed()
         self._rendered_state = None
         self._edit_lock = asyncio.Lock()
-        self._refresh_task: Optional[asyncio.Task] = None
+        self._refresh_task: asyncio.Task | None = None
         self._last_activity = monotonic()
 
     @property
@@ -182,7 +182,7 @@ class LoggerMenu(ui.View):
         return str(self.guild.id)
 
     @property
-    def config(self) -> Optional[dict]:
+    def config(self) -> dict | None:
         return self.cog.config.get(self.guild_id)
 
     @property
@@ -219,7 +219,7 @@ class LoggerMenu(ui.View):
         return value if isinstance(value, discord.Color) else discord.Color(value)
 
     @staticmethod
-    def snowflake_id(value: Any) -> Optional[int]:
+    def snowflake_id(value: Any) -> int | None:
         try:
             return int(value)
         except (TypeError, ValueError):
@@ -1810,7 +1810,7 @@ class LoggerMenu(ui.View):
     async def search_history_results(
         self,
         interaction: discord.Interaction,
-        query: Optional[str],
+        query: str | None,
     ) -> None:
         if not await self.authorize(interaction):
             return

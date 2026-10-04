@@ -9,15 +9,16 @@ A module for querying and caching data from MongoDB in a simple to use dictionar
 """
 
 import asyncio
+from collections.abc import AsyncGenerator, Generator
 from copy import deepcopy
 from itertools import islice
 from time import time
-from typing import Any, AsyncGenerator, Dict, Generator, Optional, Union
+from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo import ReplaceOne
 
-Key = Union[int, str]
+Key = int | str
 CACHE_TTL = 10
 CLEANUP_INTERVAL = 10
 FLUSH_BATCH_SIZE = 128
@@ -42,11 +43,11 @@ class Cache:
         self.default = default
         self.queries = 0
         self.cache_queries = 0
-        self.instances: Dict[Any, "DataContext"] = {}
+        self.instances: dict[Any, "DataContext"] = {}
         self.changes = {}
-        self._loads: Dict[Key, asyncio.Task] = {}
+        self._loads: dict[Key, asyncio.Task] = {}
         self._write_lock = asyncio.Lock()
-        self._flush_task: Optional[asyncio.Task] = None
+        self._flush_task: asyncio.Task | None = None
         self._next_cleanup = 0.0
 
     @property
@@ -100,9 +101,7 @@ class Cache:
         """
         if key in self.instances and len(self.instances[key]):
             return True
-        if await self._get_shared(key):
-            return True
-        return False
+        return bool(await self._get_shared(key))
 
     def __getitem__(self, key: Key) -> "Get":
         return Get(self, key)

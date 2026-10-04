@@ -13,12 +13,13 @@ import json
 import os
 import platform
 import random
+from collections.abc import Generator, Iterable
 from contextlib import suppress
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from pathlib import Path
 from time import time
-from typing import *
+from typing import Any
 
 import discord
 from discord import NotFound, HTTPException
@@ -56,7 +57,7 @@ def resolve_invite_code(value: str):
     return code
 
 
-def webhook_name_error(name: str) -> Optional[str]:
+def webhook_name_error(name: str) -> str | None:
     """Return a user-facing error for names Discord will reject."""
     if not isinstance(name, str) or not name.strip() or len(name) > 80:
         return "Webhook names must be between 1 and 80 characters."
@@ -93,7 +94,7 @@ class Utility(commands.Cog):
         self.timer_path = "./data/userdata/timers.json"
         self.timers = {}
         if os.path.isfile(self.timer_path):
-            with open(self.timer_path, "r") as f:
+            with open(self.timer_path) as f:
                 self.timers = json.load(f)
         if "timers" not in bot.tasks:
             bot.tasks["timers"] = {}
@@ -189,10 +190,7 @@ class Utility(commands.Cog):
         self,
         ctx,
         *,
-        target: Union[
-            Member, User, Role, TextChannel, VoiceChannel,
-            StageChannel, ForumChannel, CategoryChannel, str,
-        ] = None,
+        target: Member | User | Role | TextChannel | VoiceChannel | StageChannel | ForumChannel | CategoryChannel | str = None,
     ):
         await self._show_info(ctx, target)
 
@@ -222,7 +220,7 @@ class Utility(commands.Cog):
     async def info_app_user(
         self,
         interaction: Interaction,
-        user: Optional[Member] = None,
+        user: Member | None = None,
     ):
         await self._show_slash_info(interaction, user or interaction.user)
 
@@ -231,15 +229,7 @@ class Utility(commands.Cog):
     async def info_app_channel(
         self,
         interaction: Interaction,
-        channel: Optional[
-            Union[
-                TextChannel,
-                VoiceChannel,
-                StageChannel,
-                ForumChannel,
-                CategoryChannel,
-            ]
-        ] = None,
+        channel: TextChannel | VoiceChannel | StageChannel | ForumChannel | CategoryChannel | None = None,
     ):
         target = channel or interaction.channel
         if isinstance(target, discord.Thread):
@@ -484,7 +474,7 @@ class Utility(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     @commands.guild_only()
     @commands.bot_has_permissions(embed_links=True)
-    async def user_info(self, ctx, *, user: Union[Member, User] = None):
+    async def user_info(self, ctx, *, user: Member | User = None):
         if not user:
             user = ctx.author
         await self._show_info(ctx, user)
@@ -569,7 +559,7 @@ class Utility(commands.Cog):
             bots = len([m for m in ctx.guild.members if m.bot])
             online = len([m for m in ctx.guild.members if m.status in status_list])
             e = discord.Embed(color=colors.fate)
-            e.set_author(name=f"Member Count", icon_url=ctx.guild.owner.display_avatar.url)
+            e.set_author(name="Member Count", icon_url=ctx.guild.owner.display_avatar.url)
             if ctx.guild.icon:
                 e.set_thumbnail(url=ctx.guild.icon.url)
             e.description = (
@@ -616,7 +606,7 @@ class Utility(commands.Cog):
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.cooldown(2, 45, commands.BucketType.user)
     @commands.bot_has_permissions(embed_links=True)
-    async def avatar(self, ctx, *, user: Union[discord.Member, discord.User] = None):
+    async def avatar(self, ctx, *, user: discord.Member | discord.User = None):
         if not user:
             user = ctx.author
         name = await sanitize(user.display_name)
@@ -634,7 +624,7 @@ class Utility(commands.Cog):
     @commands.command(name="banner", description="Shows a user or servers banner")
     @commands.cooldown(2, 45, commands.BucketType.user)
     @commands.bot_has_permissions(embed_links=True)
-    async def banner(self, ctx, *, target: Union[discord.User, discord.Guild, discord.Invite] = None):
+    async def banner(self, ctx, *, target: discord.User | discord.Guild | discord.Invite = None):
         pages = []
         guild = ctx.guild
         if isinstance(target, (discord.Guild, discord.Invite)):
@@ -661,12 +651,12 @@ class Utility(commands.Cog):
         if guild and (guild.splash or guild.banner):
             if guild.banner:
                 e = discord.Embed(color=colors.fate)
-                e.set_author(name=f"Server Banner", icon_url=guild.icon.url if guild.icon else None)
+                e.set_author(name="Server Banner", icon_url=guild.icon.url if guild.icon else None)
                 e.set_image(url=guild.banner.url)
                 pages.append(e)
             if guild.splash:
                 e = discord.Embed(color=colors.fate)
-                e.set_author(name=f"Server Invite Splash", icon_url=guild.icon.url if guild.icon else None)
+                e.set_author(name="Server Invite Splash", icon_url=guild.icon.url if guild.icon else None)
                 e.set_image(url=guild.splash.url)
                 pages.append(e)
         if not pages:
@@ -719,17 +709,18 @@ class Utility(commands.Cog):
         if not role:
             return await ctx.send("Unknown role")
         try:
-            color = int("0x" + args[1].strip("#").strip("0x"), 0)
-            if color > 16777215:
-                return await ctx.send("That hex value is too large")
-            _hex = discord.Color(color)
-        except:
+            color_literal = args[1].strip("#").removeprefix("0x")
+            color = int("0x" + color_literal, 0)
+        except ValueError:
             return await ctx.send("Invalid Hex")
+        if color > 16777215:
+            return await ctx.send("That hex value is too large")
+        requested_color = discord.Color(color)
         if role.position >= ctx.author.top_role.position:
             return await ctx.send("That roles above your paygrade, take a seat")
         previous_color = role.color
-        await role.edit(color=_hex)
-        await ctx.send(f"Changed {role.name}'s color from {previous_color} to {_hex}")
+        await role.edit(color=requested_color)
+        await ctx.send(f"Changed {role.name}'s color from {previous_color} to {requested_color}")
 
     def start_timer_task(self, user_id, message, data):
         task_id = f"timer-{data['timer']}"
@@ -948,7 +939,7 @@ class Utility(commands.Cog):
         if not self.timers[user_id]:
             del self.timers[user_id]
         await self.save_timers()
-        await ctx.send(f"Deleted 👍")
+        await ctx.send("Deleted 👍")
 
     @commands.Cog.listener("on_ready")
     async def resume_timers(self):
@@ -1011,7 +1002,7 @@ class Utility(commands.Cog):
     @commands.cooldown(2, 5, commands.BucketType.user)
     @commands.has_permissions(view_audit_log=True)
     @commands.bot_has_permissions(view_audit_log=True)
-    async def last_entry(self, ctx, user: Optional[discord.User], action=None):
+    async def last_entry(self, ctx, user: discord.User | None, action=None):
         """ Gets the last entry for a specific action """
         last_entry = None
         if not user and not action:
@@ -1031,7 +1022,7 @@ class Utility(commands.Cog):
             async for entry in ctx.guild.audit_logs(limit=1, action=action):
                 last_entry = entry
         if not last_entry:
-            return await ctx.send(f"I couldn't find anything")
+            return await ctx.send("I couldn't find anything")
         e = discord.Embed(color=colors.fate)
         e.description = self.bot.utils.format_dict(
             {
@@ -1104,9 +1095,10 @@ class Utility(commands.Cog):
         e.description = webhook.url
         try:
             await ctx.author.send(embed=e)
-            await ctx.send("Sent the webhook url to dm 👍")
-        except:
+        except Exception:
             await ctx.send("Failed to dm you the webhook url", embed=e)
+        else:
+            await ctx.send("Sent the webhook url to dm 👍")
 
     @commands.command(name="webhooks", description="Lists the servers webhooks")
     @commands.cooldown(1, 10, commands.BucketType.guild)
@@ -1267,7 +1259,7 @@ class Utility(commands.Cog):
 
 
 # Method index
-pages: Dict[Type, str] = {
+pages: dict[type, str] = {
     None: "bot_info",
     str: "invite_info",
     User: "user_info",
@@ -1324,10 +1316,7 @@ class InfoView(AuthorView):
     def __init__(
         self,
         ctx: Context,
-        target: Union[
-            None, str, User, Member, TextChannel, VoiceChannel,
-            StageChannel, ForumChannel, CategoryChannel, Role,
-        ],
+        target: None | str | User | Member | TextChannel | VoiceChannel | StageChannel | ForumChannel | CategoryChannel | Role,
     ) -> None:
         self.cd = Cooldown(1, 3)
 
@@ -1408,7 +1397,7 @@ class InfoView(AuthorView):
         self,
         embed: Embed,
         page: str,
-        native_url: Optional[str] = None,
+        native_url: str | None = None,
     ) -> None:
         """Prefer informative Discord artwork, with generated art as fallback."""
         if native_url:
@@ -1425,7 +1414,7 @@ class InfoView(AuthorView):
             embed.set_image(url=f"attachment://{filename}")
 
     @staticmethod
-    def attachments_for(embed: Embed) -> List[discord.File]:
+    def attachments_for(embed: Embed) -> list[discord.File]:
         image_url = getattr(embed.image, "url", None)
         if not image_url or not image_url.startswith("attachment://"):
             return []
@@ -1436,7 +1425,7 @@ class InfoView(AuthorView):
     async def render_page(
         self,
         page: str,
-        interaction: Optional[Interaction] = None,
+        interaction: Interaction | None = None,
     ) -> None:
         self.current_page = page
         for item in self.children:
@@ -1544,7 +1533,7 @@ class InfoView(AuthorView):
 
 
     async def user_info(self) -> Generator[None, None, Embed]:
-        user: Union[Member, User] = (
+        user: Member | User = (
             self.target
             if isinstance(self.target, (Member, User))
             else self.ctx.author
@@ -1595,7 +1584,7 @@ class InfoView(AuthorView):
         privacy = dict(zip(privacy_items, await asyncio.gather(
             *(self.bot.get_privacy(user, item) for item in privacy_items)
         )))
-        nicknames: List[str] = []
+        nicknames: list[str] = []
         if privacy["nicks"] and user.id != self.bot.user.id:
             for guild in guilds:
                 member = guild.get_member(user.id)

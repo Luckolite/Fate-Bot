@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import io
 import json
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping, Optional
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import ui
@@ -188,13 +189,13 @@ class AntiSpamDashboard(ui.LayoutView):
         self.ctx = ctx
         self.guild = ctx.guild
         self.user = ctx.author
-        self.message: Optional[discord.Message] = None
-        self.notice: Optional[str] = None
+        self.message: discord.Message | None = None
+        self.notice: str | None = None
         self.page = "overview"
         self.selected_module = "rate_limit"
         self.selected_policy = "default"
         self.selected_guide = "rollout"
-        self.thumbnail_media: Optional[str] = None
+        self.thumbnail_media: str | None = None
         if ANTISPAM_ART_PATH.is_file():
             self.thumbnail_media = f"attachment://{ANTISPAM_ART_FILENAME}"
         else:

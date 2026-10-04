@@ -6,10 +6,11 @@ schema so the bot, dashboard, and tests all agree on defaults and migrations.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, MutableMapping
 from copy import deepcopy
 from datetime import datetime, timezone
 from math import isfinite
-from typing import Any, Mapping, MutableMapping
+from typing import Any
 
 SCHEMA_VERSION = 2
 VALID_MODES = ("observe", "enforce")

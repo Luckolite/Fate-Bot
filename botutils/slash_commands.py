@@ -7,8 +7,8 @@ adapted through discord.py's hybrid invocation path and placed into namespaces.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional
 
 from discord import app_commands
 from discord.ext import commands
@@ -52,7 +52,7 @@ class LegacyHybridGroup(commands.Group):
         )
 
 
-NAMESPACES: Dict[str, Namespace] = {
+NAMESPACES: dict[str, Namespace] = {
     "cogs.core.cc": Namespace("cc", "Create and manage custom commands"),
     "cogs.core.core": Namespace("bot", "General Fate and server commands"),
     "cogs.core.messages": Namespace("messages", "Configure automatic server messages"),
@@ -182,7 +182,7 @@ def _add_group_command(
 
 
 def _has_owner_check(command: commands.Command) -> bool:
-    current: Optional[commands.Command] = command
+    current: commands.Command | None = command
     while current is not None:
         if any(
             "is_owner.<locals>.predicate" in getattr(check, "__qualname__", "")
@@ -259,10 +259,22 @@ def _application_command(command: commands.Command) -> HybridAppCommand:
         return _text_fallback(command, name)
 
 
-def _overview_command(group: commands.Group) -> Optional[HybridAppCommand]:
+def _overview_command(group: commands.Group) -> HybridAppCommand | None:
     if not _is_public(group):
         return None
     return _application_command(group)
+
+
+def _add_public_subcommands(
+    group: app_commands.Group,
+    prefix_commands: Iterable[commands.Command],
+) -> None:
+    """Adapt public children in the same order on every rebuild."""
+    for command in sorted(prefix_commands, key=_slash_name):
+        if not _is_public(command):
+            continue
+        child = _subgroup(command) if isinstance(command, commands.Group) else _application_command(command)
+        _add_group_command(group, child)
 
 
 def _subgroup(command: commands.Group) -> app_commands.Group:
@@ -274,13 +286,7 @@ def _subgroup(command: commands.Group) -> app_commands.Group:
     if overview is not None:
         overview.name = "overview"
         _add_group_command(group, overview)
-    for child in command.commands:
-        if not _is_public(child):
-            continue
-        if isinstance(child, commands.Group):
-            _add_group_command(group, _subgroup(child))
-        else:
-            _add_group_command(group, _application_command(child))
+    _add_public_subcommands(group, command.commands)
     return group
 
 
@@ -293,7 +299,7 @@ def _add_faction_commands(target: app_commands.Group, source: commands.Group) ->
     if overview is not None:
         overview.name = "overview"
         _add_group_command(target, overview)
-    for child in source.commands:
+    for child in sorted(source.commands, key=_slash_name):
         if not _is_public(child):
             continue
         section = FACTION_SECTIONS.get(child.name)
@@ -313,7 +319,7 @@ def _namespace_commands(
     group = app_commands.Group(name=namespace.name, description=namespace.description)
     app_commands.guild_only(group)
 
-    for command in prefix_commands:
+    for command in sorted(prefix_commands, key=_slash_name):
         if not _needs_adapter(command):
             continue
         if isinstance(command, commands.Group):
@@ -325,13 +331,7 @@ def _namespace_commands(
                 if overview is not None:
                     overview.name = "overview"
                     _add_group_command(group, overview)
-                for child in command.commands:
-                    if not _is_public(child):
-                        continue
-                    if isinstance(child, commands.Group):
-                        _add_group_command(group, _subgroup(child))
-                    else:
-                        _add_group_command(group, _application_command(child))
+                _add_public_subcommands(group, command.commands)
             else:
                 _add_group_command(group, _subgroup(command))
         else:
@@ -347,9 +347,9 @@ def install_legacy_slash_commands(bot: commands.Bot) -> int:
     for name in getattr(bot, "_legacy_slash_commands", set()):
         bot.tree.remove_command(name)
 
-    by_namespace: Dict[Namespace, list[commands.Command]] = {}
+    by_namespace: dict[Namespace, list[commands.Command]] = {}
     generated_commands = set()
-    for command in bot.commands:
+    for command in sorted(bot.commands, key=lambda item: item.qualified_name):
         if command.module in TOP_LEVEL_MODULES and _needs_adapter(command):
             app_command = _application_command(command)
             app_commands.guild_only(app_command)
@@ -361,7 +361,7 @@ def install_legacy_slash_commands(bot: commands.Bot) -> int:
             by_namespace.setdefault(namespace, []).append(command)
 
     generated = set()
-    for namespace, prefix_commands in by_namespace.items():
+    for namespace, prefix_commands in sorted(by_namespace.items(), key=lambda item: item[0].name):
         group = _namespace_commands(namespace, prefix_commands)
         if not group.commands:
             continue

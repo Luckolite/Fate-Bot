@@ -12,12 +12,11 @@ import asyncio
 import json
 import traceback
 from collections import deque
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from copy import deepcopy
 from datetime import datetime, timedelta
 from os import path
 from random import choice
-from typing import Optional, Union
 
 import discord
 from discord import NotFound, Forbidden
@@ -199,7 +198,7 @@ class GlobalChat(commands.Cog):
         if channel_id is not None:
             self.active_channel_ids.discard(channel_id)
 
-    async def get_user_status(self, user_id: int) -> Optional[str]:
+    async def get_user_status(self, user_id: int) -> str | None:
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
                 "select status from global_users where user_id = %s;",
@@ -216,6 +215,16 @@ class GlobalChat(commands.Cog):
 
     async def return_coro(self, coro):
         return await coro
+
+    @contextmanager
+    def _temporary_ignore(self, user_id: int):
+        """Ignore a member only while the current moderation action is running."""
+        self.ignore.append(user_id)
+        try:
+            yield
+        finally:
+            with suppress(ValueError):
+                self.ignore.remove(user_id)
 
     @tasks.loop(seconds=0.21)
     async def handle_queue(self):
@@ -279,7 +288,7 @@ class GlobalChat(commands.Cog):
                         if author_msg.author.id != self.bot.user.id:
                             self.bot.suppressed.append(author_msg.id)
                             await author_msg.delete()
-        except:
+        except Exception:
             print(traceback.format_exc())
 
     async def cache_channels(self):
@@ -438,7 +447,7 @@ class GlobalChat(commands.Cog):
                 await ctx.send(f"Added {user} as a mod")
 
     @_gc.command(name="ban", description="Bans a user or server from global chat")
-    async def _ban(self, ctx, target: Optional[Union[discord.User, discord.Guild]], *, reason = None):
+    async def _ban(self, ctx, target: discord.User | discord.Guild | None, *, reason = None):
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
                 "select status from global_users "
@@ -471,19 +480,8 @@ class GlobalChat(commands.Cog):
         self._queue.append([(f"{target} was banned from global-chat for `{reason}`", []), False, ctx.message])
         await self.cache_channels()
 
-        # Forward the change into each global chat channel
-        # e = discord.Embed(color=colors.red)
-        # if isinstance(target, discord.User):
-        #     icon_url = target.display_avatar.url
-        # else:
-        #     icon_url = target.icon.url
-        # e.set_author(name=f"{target} was banned", icon_url=icon_url)
-        # e.description = reason
-        # self._queue.append([e, False, None])
-        # self.last_id = None
-
     @_gc.command(name="unban", description="Unbans a user or server from global chat")
-    async def _unban(self, ctx, *, target: Union[discord.User, discord.Guild]):
+    async def _unban(self, ctx, *, target: discord.User | discord.Guild):
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
                 "select status from global_users "
@@ -531,7 +529,7 @@ class GlobalChat(commands.Cog):
         await self.save_blacklist()
 
     @_gc.command(name="ban-images", description="Blocks global-chat image access")
-    async def _ban_images(self, ctx, target: Union[discord.User, discord.Guild]):
+    async def _ban_images(self, ctx, target: discord.User | discord.Guild):
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
                 "select status from global_users "
@@ -547,7 +545,7 @@ class GlobalChat(commands.Cog):
         await self.save_blacklist()
 
     @_gc.command(name="unban-images", description="Restores global-chat image access")
-    async def _unban_images(self, ctx, target: Union[discord.User, discord.Guild]):
+    async def _unban_images(self, ctx, target: discord.User | discord.Guild):
         async with self.bot.utils.cursor() as cur:
             await cur.execute(
                 "select status from global_users "
@@ -743,11 +741,10 @@ class GlobalChat(commands.Cog):
                         await msg.add_reaction("⏳")
                     return
                 if self.cd.check(msg.author.id):
-                    self.ignore.append(msg.author.id)
-                    if msg.channel.permissions_for(msg.guild.me).add_reactions:
-                        await msg.add_reaction("⏳")
-                    await asyncio.sleep(25)
-                    self.ignore.remove(msg.author.id)
+                    with self._temporary_ignore(msg.author.id):
+                        if msg.channel.permissions_for(msg.guild.me).add_reactions:
+                            await msg.add_reaction("⏳")
+                        await asyncio.sleep(25)
                     return
 
                 if not msg.channel.permissions_for(msg.guild.me).manage_webhooks:
@@ -761,9 +758,6 @@ class GlobalChat(commands.Cog):
                         "You'll have to re-enable it whence I'm given the permission"
                     )
 
-                # Duplicate messages
-                # if msg.content and any(msg.content == m.content for m in self.msg_cache):
-                #     return
                 if msg.guild.id in self.config["blocked"] or msg.author.id in self.config["blocked"]:
                     return
 
@@ -822,7 +816,6 @@ class GlobalChat(commands.Cog):
                         if m.embeds and m.embeds[0].author:
                             em: discord.Embed = m.embeds[0]
                             if em.author.name.startswith("Replying to"):
-                                # e.set_author(name=em.author.name, icon_url=em.author.icon_url)
                                 reply = "> [" + "\n".join(em.description.splitlines()[1:]) + f"]({m.jump_url})"
                         if m.embeds:
                             text = f"> **Replying to [EMBED]({m.jump_url})**"
@@ -833,48 +826,35 @@ class GlobalChat(commands.Cog):
 
                         e.description = f"{reply or text}\n{emojis.reply}{msg.content[:self.bot.content_limit]}"
                     msg.content = ""
-                    # e.set_thumbnail(url=m.author.display_avatar.url)
-                    # if m.content:
-                    #     old_content = "\n".join("> " + line for line in m.content.split("\n"))
-                    #     e.description = f"> **Replying to [@{m.author.name}]({m.jump_url})**\n" \
-                    #                     f"> {emojis.reply} *{old_content.lstrip('> ')}*\n" \
-                    #                     f"↳ {msg.content[:self.bot.content_limit]}"
-                    # else:
-                    #     e.description = f"> **Replying to [@{m.author.name}]({m.jump_url})**" \
-                    #                     f"\n{emojis.reply}{msg.content[:self.bot.content_limit]}"
-                    msg.content = ""
                     msg.embeds.append(e)
 
                 if msg.content.count("@") > 2:
-                    self.ignore.append(msg.author.id)
-                    await msg.channel.send(
-                        "You've been temporarily muted from global-chat for 15mins for sending too many @'s",
-                        reference=msg
-                    )
-                    await asyncio.sleep(900)
-                    self.ignore.remove(msg.author.id)
+                    with self._temporary_ignore(msg.author.id):
+                        await msg.channel.send(
+                            "You've been temporarily muted from global-chat for 15mins for sending too many @'s",
+                            reference=msg
+                        )
+                        await asyncio.sleep(900)
                     return
                 lowered_content = msg.content.lower()
                 if any(
                     lowered_content.startswith(phrase) or lowered_content.endswith(phrase)
                     for phrase in Assets.forbidden
                 ):
-                    self.ignore.append(msg.author.id)
-                    await msg.channel.send(
-                        "You've been temporarily muted from global-chat for 15mins for sending a filtered word",
-                        reference=msg
-                    )
-                    await asyncio.sleep(900)
-                    self.ignore.remove(msg.author.id)
+                    with self._temporary_ignore(msg.author.id):
+                        await msg.channel.send(
+                            "You've been temporarily muted from global-chat for 15mins for sending a filtered word",
+                            reference=msg
+                        )
+                        await asyncio.sleep(900)
                     return
                 if msg.content and msg.content == self.last_message:
-                    self.ignore.append(msg.author.id)
-                    await msg.channel.send(
-                        "You've been temporarily muted from global-chat for 15mins for repeating the last message",
-                        reference=msg
-                    )
-                    await asyncio.sleep(900)
-                    self.ignore.remove(msg.author.id)
+                    with self._temporary_ignore(msg.author.id):
+                        await msg.channel.send(
+                            "You've been temporarily muted from global-chat for 15mins for repeating the last message",
+                            reference=msg
+                        )
+                        await asyncio.sleep(900)
                     return
                 self.last_message = str(msg.content)
                 if "chat" in msg.content:
@@ -884,13 +864,12 @@ class GlobalChat(commands.Cog):
                 if msg.content and len(msg.content) > 5 and any(
                     msg.content == old_msg.content for old_msg in recent_messages
                 ):
-                    self.ignore.append(msg.author.id)
-                    await msg.channel.send(
-                        "You've been temporarily muted from global-chat for 15mins for trying to send a duplicate message",
-                        reference=msg
-                    )
-                    await asyncio.sleep(900)
-                    self.ignore.remove(msg.author.id)
+                    with self._temporary_ignore(msg.author.id):
+                        await msg.channel.send(
+                            "You've been temporarily muted from global-chat for 15mins for trying to send a duplicate message",
+                            reference=msg
+                        )
+                        await asyncio.sleep(900)
                     return
 
                 # Convert mentions to nicknames so everyone can read them
@@ -912,11 +891,9 @@ class GlobalChat(commands.Cog):
                         files = await asyncio.gather(
                             *(attachment.to_file() for attachment in msg.attachments)
                         )
-                # if msg.stickers:
-                #     e.set_image(url=msg.stickers[0].url)
                 self._queue.append([(msg.content, files), False, msg])
                 self.messages.append(msg)
-        except:
+        except Exception:
             print(traceback.format_exc())
 
     @commands.Cog.listener("on_raw_reaction_add")

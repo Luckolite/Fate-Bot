@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
 from time import time, monotonic
-from typing import Any, Dict, Optional, Union
+from typing import Any
 from urllib.parse import quote_plus
 from weakref import WeakValueDictionary
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     sys.modules.setdefault("fate", sys.modules[__name__])
 
 
-def latency_milliseconds(latency: float) -> Optional[int]:
+def latency_milliseconds(latency: float) -> int | None:
     """Convert a valid Discord latency to milliseconds for status clients."""
     return round(latency * 1000) if isfinite(latency) else None
 
@@ -116,7 +116,7 @@ def load_auth_key() -> bytes:
     return key.encode()
 
 
-def load_auth_config(path: Union[str, os.PathLike]) -> Dict[str, Any]:
+def load_auth_config(path: str | os.PathLike) -> dict[str, Any]:
     """Load a plaintext or Fernet-encrypted authentication config."""
     auth_path = Path(path)
     raw = auth_path.read_bytes().strip()
@@ -148,7 +148,7 @@ def load_auth_config(path: Union[str, os.PathLike]) -> Dict[str, Any]:
 
 
 def load_bot_token(
-    auth: Dict[str, Any], token_id: str, token_path: Optional[str] = None
+    auth: dict[str, Any], token_id: str, token_path: str | None = None
 ) -> str:
     """Load a Discord token from an external file or the auth config fallback."""
     if token_path:
@@ -171,7 +171,7 @@ def load_bot_token(
     return token
 
 
-def resolve_external_token_path() -> Optional[Path]:
+def resolve_external_token_path() -> Path | None:
     """Return the configured token file, or Desktop/token.txt when present."""
     configured_path = os.environ.get("FATE_TOKEN_PATH")
     if configured_path:
@@ -211,7 +211,7 @@ class Fate(commands.AutoShardedBot):
         if self.config_path.is_symlink():
             raise RuntimeError("Fate's config path cannot be a symbolic link")
         with self.config_path.open("r", encoding="utf-8") as file:
-            self.config: Dict[str, Any] = json.load(file)
+            self.config: dict[str, Any] = json.load(file)
         website_config = self.config.get("website", {})
         if not isinstance(website_config, dict):
             raise TypeError("config.json website must be an object")
@@ -273,12 +273,12 @@ class Fate(commands.AutoShardedBot):
 
         Path(self.config["datastore_location"]).mkdir(parents=True, exist_ok=True)
         with open(
-            "./data/userdata/disabled_commands.json", "r", encoding="utf-8"
+            "./data/userdata/disabled_commands.json", encoding="utf-8"
         ) as file:
             self.disabled_commands = json.load(file)
 
         # Runtime state must belong to this bot instance, not the Fate class.
-        self.auth: Dict[str, Any] = {}
+        self.auth: dict[str, Any] = {}
         self.app_is_running = False
         self.pool = None
         self._pool_ready = asyncio.Event()
@@ -374,7 +374,7 @@ class Fate(commands.AutoShardedBot):
         return "secondary" if self.debug_mode else "primary"
 
     @property
-    def vote_url(self) -> Optional[str]:
+    def vote_url(self) -> str | None:
         """Expose public voting only while Fate is outside debug mode."""
         if self.debug_mode or not self._top_gg_url:
             return None
@@ -864,7 +864,7 @@ class Fate(commands.AutoShardedBot):
         except aiohttp.ClientPayloadError:
             raise commands.BadArgument(f"Failed to fetch {label}")
 
-    def get_message(self, message_id: int) -> Optional[discord.Message]:
+    def get_message(self, message_id: int) -> discord.Message | None:
         """Return a message from the internal cache if it exists"""
         for message in self.cached_messages:
             if message.id == message_id:
@@ -957,7 +957,7 @@ class Fate(commands.AutoShardedBot):
             await self._pool_ready.wait()
         return self.pool
 
-    async def execute(self, sql: str, args: Optional[tuple] = None) -> None:
+    async def execute(self, sql: str, args: tuple | None = None) -> None:
         """Executes a given query and returns nothing"""
         await self.wait_for_pool()
         async with self.pool.acquire() as conn:
@@ -974,7 +974,7 @@ class Fate(commands.AutoShardedBot):
             r = await cur.fetchall()
         return r
 
-    async def rowcount(self, sql: str, args: Optional[tuple] = None) -> int:
+    async def rowcount(self, sql: str, args: tuple | None = None) -> int:
         """Execute a query and return its affected/result row count."""
         await self.wait_for_pool()
         async with self.utils.cursor() as cur:
@@ -1160,11 +1160,11 @@ class Fate(commands.AutoShardedBot):
                 ]
         self.log(f"{'Rem' if remap else 'M'}apped modules")
 
-    async def load(self, data: str) -> Union[list, dict]:
+    async def load(self, data: str) -> list | dict:
         """Load JSON outside the event loop."""
         return await asyncio.to_thread(json.loads, data)
 
-    async def dump(self, data: Union[list, dict]) -> str:
+    async def dump(self, data: list | dict) -> str:
         """Serialize JSON outside the event loop."""
         return await asyncio.to_thread(json.dumps, data)
 

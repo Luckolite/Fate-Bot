@@ -8,10 +8,10 @@ import json
 import os
 import secrets
 import tempfile
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from time import monotonic, sleep, time
-from typing import Awaitable, Callable, Iterator
 
 import psutil
 

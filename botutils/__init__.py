@@ -14,8 +14,8 @@ __license__ = "Proprietary, see LICENSE for details"
 __copyright__ = "Copyright (C) 2021-present Luckolite, All Rights Reserved"
 __version__ = "1.0.0"
 
+from collections.abc import Callable
 from functools import partial
-from typing import Callable
 
 from discord.ext.commands import Cog
 

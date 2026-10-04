@@ -61,7 +61,7 @@ class NSFW(commands.Cog):
             e = discord.Embed(color=colors.random())
             e.set_image(url=choice(dat)["file_url"])
             await ctx.send(embed=e)
-        except:
+        except Exception:
             await ctx.send("error")
 
     @commands.command(name="trap", description="Fetches a random trap image")

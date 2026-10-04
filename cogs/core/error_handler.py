@@ -13,7 +13,6 @@ import sys
 import traceback
 from contextlib import suppress
 from io import BytesIO
-from typing import *
 
 import aiohttp
 import discord
@@ -74,13 +73,12 @@ class ErrorHandler(commands.Cog):
         discord.errors.NotFound,
         commands.CommandNotFound,
         commands.NoPrivateMessage,
-        discord.DiscordServerError,
     )
 
     def __init__(self, bot: fate.Fate):
         self.bot = bot
         ensure_logging_directory()
-        self.notifs: Dict[int, int] = {}  # Error message ID -> affected user ID
+        self.notifs: dict[int, int] = {}  # Error message ID -> affected user ID
         self._report_tasks: set[asyncio.Task] = set()
         self.cd = Cooldown(1, 5)
         self.response_cooldown = Cooldown(1, 10)
@@ -132,7 +130,7 @@ class ErrorHandler(commands.Cog):
 
         if error:
             if channel := self.bot.get_channel(self.bot.config["event_errors"]):
-                message = context.get("message", None)
+                message = context.get("message")
                 stack = ''.join(traceback.format_tb(error.__traceback__))
                 trace = f"```python\n{message}\n{stack}" \
                         f"{type(error).__name__}: {''.join([str(x) for x in error.args])}```"
@@ -156,7 +154,7 @@ class ErrorHandler(commands.Cog):
             raise error
 
     @commands.Cog.listener()
-    async def on_command_error(self, ctx, error, ignore_if_handler = True):
+    async def on_command_error(self, ctx, error, ignore_if_handler=True):
         # Ensure the servers `currently running commands` index gets updated
         if (
             ctx.command
@@ -245,13 +243,13 @@ class ErrorHandler(commands.Cog):
             elif isinstance(error, discord.errors.NotFound):
                 try:
                     await ctx.send(
-                        f"Something I tried to do an operation on was removed or doesn't exist",
+                        "Something I tried to do an operation on was removed or doesn't exist",
                         reference=ctx.message,
                         delete_after=5
                     )
                 except discord.errors.HTTPException:
                     await ctx.send(
-                        f"Something I tried to do an operation on was removed or doesn't exist",
+                        "Something I tried to do an operation on was removed or doesn't exist",
                         delete_after=5
                     )
                 return
@@ -303,6 +301,10 @@ class ErrorHandler(commands.Cog):
         except (discord.errors.Forbidden, discord.errors.NotFound):
             return
 
+        await self._report_command_error(ctx, error, full_tb, formatted_tb)
+
+    async def _report_command_error(self, ctx, error, full_tb: str, formatted_tb: str):
+        """Report an unhandled command error and retain its bounded notification."""
         # Print everything to console to get the full traceback
         safe_console_print(
             "Ignoring exception in command {}:".format(ctx.command),
@@ -357,7 +359,7 @@ class ErrorHandler(commands.Cog):
         if ctx.author.id in self.bot.owner_ids:
             e = discord.Embed(color=colors.fate)
             e.set_author(
-                name=f"Here's the full traceback:", icon_url=ctx.author.display_avatar.url
+                name="Here's the full traceback:", icon_url=ctx.author.display_avatar.url
             )
             e.set_thumbnail(url=self.bot.user.display_avatar.url)
             e.description = full_tb
@@ -387,7 +389,7 @@ class ErrorHandler(commands.Cog):
                                 description = description[:128] + "..."
                             e.description = f"**Command you used:** {description}"
                             with suppress(Exception):
-                                await author.send(f"A problem you encountered was fixed", embed=e)
+                                await author.send("A problem you encountered was fixed", embed=e)
                                 await channel.send(
                                     "DM'd the user that the problem was fixed",
                                     reference=msg,

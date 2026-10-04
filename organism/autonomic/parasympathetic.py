@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Mapping
 
 from .base import AutonomicBranch, AutonomicContext, RecruitmentStrategy
 from ..models import StrategyName, clamp, unit

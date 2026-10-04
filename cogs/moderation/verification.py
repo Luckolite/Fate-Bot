@@ -10,7 +10,6 @@ Modern, component-driven member verification and configuration.
 
 import asyncio
 from contextlib import suppress
-from typing import Optional
 
 import discord
 from discord import Forbidden, HTTPException, NotFound, app_commands, ui
@@ -43,11 +42,11 @@ async def respond_ephemeral(interaction: discord.Interaction, message: str) -> N
         await interaction.response.send_message(message, ephemeral=True)
 
 
-def channel_default(channel: Optional[discord.abc.GuildChannel]) -> list:
+def channel_default(channel: discord.abc.GuildChannel | None) -> list:
     return [channel] if channel else []
 
 
-def role_default(role: Optional[discord.Role]) -> list:
+def role_default(role: discord.Role | None) -> list:
     return [role] if role else []
 
 
@@ -60,7 +59,7 @@ class Verification(commands.Cog):
         self.active_challenges: dict[tuple[int, int], asyncio.Task] = {}
         self.background_tasks: set[asyncio.Task] = set()
         self.entry_view = VerificationEntryView(self)
-        self.panel_sync_task: Optional[asyncio.Task] = None
+        self.panel_sync_task: asyncio.Task | None = None
 
         changed = False
         for config in self.config.values():
@@ -142,7 +141,7 @@ class Verification(commands.Cog):
     def is_enabled(self, guild_id: int) -> bool:
         return guild_id in self.config
 
-    def get_config(self, guild_id: int) -> Optional[dict]:
+    def get_config(self, guild_id: int) -> dict | None:
         config = self.config.get(guild_id)
         if config is not None:
             self.normalize_config(config)
@@ -164,8 +163,8 @@ class Verification(commands.Cog):
     def validate_role(
         guild: discord.Guild,
         role: discord.Role,
-        actor: Optional[discord.Member] = None,
-    ) -> Optional[str]:
+        actor: discord.Member | None = None,
+    ) -> str | None:
         if role.is_default():
             return "The everyone role cannot be used for verification."
         if role.managed:
@@ -181,7 +180,7 @@ class Verification(commands.Cog):
         return None
 
     @staticmethod
-    def channel_permission_error(channel: discord.TextChannel) -> Optional[str]:
+    def channel_permission_error(channel: discord.TextChannel) -> str | None:
         permissions = channel.permissions_for(channel.guild.me)
         required = (
             "view_channel",
@@ -200,7 +199,7 @@ class Verification(commands.Cog):
         return None
 
     @staticmethod
-    def log_channel_permission_error(channel: discord.TextChannel) -> Optional[str]:
+    def log_channel_permission_error(channel: discord.TextChannel) -> str | None:
         permissions = channel.permissions_for(channel.guild.me)
         missing = [
             permission.replace("_", " ").title()
@@ -253,8 +252,8 @@ class Verification(commands.Cog):
         return warnings
 
     async def resolve_text_channel(
-        self, guild: discord.Guild, channel_id: Optional[int]
-    ) -> Optional[discord.TextChannel]:
+        self, guild: discord.Guild, channel_id: int | None
+    ) -> discord.TextChannel | None:
         if not channel_id:
             return None
         channel = guild.get_channel(channel_id)
@@ -350,7 +349,7 @@ class Verification(commands.Cog):
         self,
         member: discord.Member,
         outcome: str,
-        detail: Optional[str] = None,
+        detail: str | None = None,
     ) -> None:
         config = self.get_config(member.guild.id)
         if not config:
@@ -386,8 +385,8 @@ class Verification(commands.Cog):
         self,
         member: discord.Member,
         *,
-        interaction: Optional[discord.Interaction] = None,
-    ) -> Optional[bool]:
+        interaction: discord.Interaction | None = None,
+    ) -> bool | None:
         config = self.get_config(member.guild.id)
         if not config:
             if interaction:
@@ -433,8 +432,8 @@ class Verification(commands.Cog):
         member: discord.Member,
         config: dict,
         *,
-        interaction: Optional[discord.Interaction] = None,
-    ) -> Optional[bool]:
+        interaction: discord.Interaction | None = None,
+    ) -> bool | None:
         channel = await self.resolve_text_channel(
             member.guild, config.get("channel_id")
         )
@@ -653,7 +652,7 @@ class Verification(commands.Cog):
     )
     @commands.has_permissions(manage_guild=True)
     async def _set_temp_role(
-        self, ctx: commands.Context, role: Optional[discord.Role] = None
+        self, ctx: commands.Context, role: discord.Role | None = None
     ):
         config = self.get_config(ctx.guild.id)
         if not config:
@@ -681,7 +680,7 @@ class Verification(commands.Cog):
     )
     @commands.has_permissions(manage_guild=True)
     async def _delete_after(
-        self, ctx: commands.Context, enabled: Optional[bool] = None
+        self, ctx: commands.Context, enabled: bool | None = None
     ):
         await self.toggle_setting(
             ctx, "delete_after", enabled, "cleanup after completion"
@@ -691,14 +690,14 @@ class Verification(commands.Cog):
         name="kick", description="Toggles kicking members when a captcha expires"
     )
     @commands.has_permissions(manage_guild=True)
-    async def _kick(self, ctx: commands.Context, enabled: Optional[bool] = None):
+    async def _kick(self, ctx: commands.Context, enabled: bool | None = None):
         await self.toggle_setting(ctx, "kick_on_fail", enabled, "kick on timeout")
 
     @verification.command(
         name="auto-start", description="Toggles opening a captcha when members join"
     )
     @commands.has_permissions(manage_guild=True)
-    async def auto_start(self, ctx: commands.Context, enabled: Optional[bool] = None):
+    async def auto_start(self, ctx: commands.Context, enabled: bool | None = None):
         await self.toggle_setting(ctx, "auto_start", enabled, "automatic challenges")
 
     @verification.command(
@@ -707,7 +706,7 @@ class Verification(commands.Cog):
     )
     @commands.has_permissions(manage_guild=True)
     async def _log_channel(
-        self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None
+        self, ctx: commands.Context, channel: discord.TextChannel | None = None
     ):
         config = self.get_config(ctx.guild.id)
         if not config:
@@ -729,7 +728,7 @@ class Verification(commands.Cog):
         self,
         ctx: commands.Context,
         setting: str,
-        enabled: Optional[bool],
+        enabled: bool | None,
         label: str,
     ) -> None:
         config = self.get_config(ctx.guild.id)
@@ -852,7 +851,7 @@ class Verification(commands.Cog):
 
 
 class VerificationEntryView(ui.LayoutView):
-    def __init__(self, cog: Verification, guild: Optional[discord.Guild] = None):
+    def __init__(self, cog: Verification, guild: discord.Guild | None = None):
         super().__init__(timeout=None)
         self.cog = cog
         title = f"Welcome to {guild.name}" if guild else "Server verification"
@@ -912,8 +911,8 @@ class VerificationDashboard(ui.LayoutView):
         self.ctx = ctx
         self.guild = ctx.guild
         self.user = ctx.author
-        self.message: Optional[discord.Message] = None
-        self.notice: Optional[str] = None
+        self.message: discord.Message | None = None
+        self.notice: str | None = None
 
     async def start(self):
         self.rebuild()

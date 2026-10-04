@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 from time import time
-from typing import TYPE_CHECKING, Any, Mapping, Optional
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import ui
@@ -87,10 +88,10 @@ class AntiRaidDashboard(ui.LayoutView):
         self.ctx = ctx
         self.guild = ctx.guild
         self.user = ctx.author
-        self.message: Optional[discord.Message] = None
-        self.notice: Optional[str] = None
+        self.message: discord.Message | None = None
+        self.notice: str | None = None
         self.page = "overview"
-        self.thumbnail_media: Optional[str] = None
+        self.thumbnail_media: str | None = None
         if ANTIRAID_ART_PATH.is_file():
             self.thumbnail_media = f"attachment://{ANTIRAID_ART_FILENAME}"
         else:

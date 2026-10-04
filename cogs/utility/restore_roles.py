@@ -24,7 +24,7 @@ class RestoreRoles(commands.Cog):
         self.cache = {}
         self.path = "./data/userdata/restore_roles.json"
         if isfile(self.path):
-            with open(self.path, "r") as f:
+            with open(self.path) as f:
                 dat = json.load(f)
                 if "guilds" in dat:
                     self.guilds = dat["guilds"]

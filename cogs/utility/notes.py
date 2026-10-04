@@ -25,7 +25,7 @@ class Notepad(commands.Cog):
         self.notes = {}
         self.timestamp = {}
         if isfile("./data/userdata/notes.json"):
-            with open("./data/userdata/notes.json", "r") as infile:
+            with open("./data/userdata/notes.json") as infile:
                 dat = json.load(infile)
                 if "notes" in dat and "timestamp" in dat:
                     self.notes = dat["notes"]

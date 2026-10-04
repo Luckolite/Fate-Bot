@@ -13,12 +13,13 @@ import stat
 import tempfile
 import threading
 from collections import OrderedDict
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, Mapping, TypeVar
+from typing import TypeVar
 
 import psutil
 

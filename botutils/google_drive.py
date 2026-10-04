@@ -13,11 +13,12 @@ import os
 import re
 import secrets
 import tempfile
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from time import time
-from typing import Any, AsyncIterator
+from typing import Any
 from urllib.parse import urlencode
 
 import aiohttp

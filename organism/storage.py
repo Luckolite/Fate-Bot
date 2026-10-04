@@ -8,11 +8,12 @@ import os
 import tempfile
 import threading
 import weakref
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterator, TypeVar
+from typing import TypeVar
 
 STATE_SCHEMA = "organism.state.v5"
 LEGACY_STATE_SCHEMA = "organism.state.v4"

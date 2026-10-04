@@ -10,7 +10,6 @@ A modern dashboard for common server settings.
 
 import json
 from copy import deepcopy
-from typing import Optional
 
 import discord
 from discord import app_commands, ui
@@ -177,7 +176,7 @@ class SettingsMenu(ui.View):
         self.guild = ctx.guild
         self.user = ctx.author
         self.category = category
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
 
     @property
     def general(self) -> dict:
@@ -207,7 +206,7 @@ class SettingsMenu(ui.View):
             return None
         return await cog.config[self.guild.id] or deepcopy(cog.default_config)
 
-    def messages_config(self) -> Optional[dict]:
+    def messages_config(self) -> dict | None:
         cog = self.messages_cog
         if not cog:
             return None
@@ -219,7 +218,7 @@ class SettingsMenu(ui.View):
                 config.setdefault(key, deepcopy(value))
         return config
 
-    def logger_config(self) -> Optional[dict]:
+    def logger_config(self) -> dict | None:
         cog = self.logger_cog
         if not cog:
             return None
@@ -1045,7 +1044,7 @@ class SettingsChannelSelect(ui.ChannelSelect):
         placeholder: str,
         row: int,
         max_values: int = 1,
-        defaults: Optional[list] = None
+        defaults: list | None = None
     ):
         self.menu = menu
         self.setting = setting

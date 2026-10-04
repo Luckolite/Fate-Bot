@@ -17,8 +17,8 @@ Functions:
 
 import asyncio
 import re
+from collections.abc import Callable
 from functools import partial
-from typing import Callable, List, Optional
 
 from discord.ext.commands import Context
 
@@ -32,13 +32,13 @@ async def _run_in_executor(func: Callable):
     return await loop.run_in_executor(None, func)
 
 
-async def search(pattern: str, string: str) -> Optional[str]:
+async def search(pattern: str, string: str) -> str | None:
     """ Returns a single match for a pattern """
     result = await _run_in_executor(partial(re.search, pattern, string))
     return result.group() if result else None
 
 
-async def findall(pattern: str, string: str) -> List[str]:
+async def findall(pattern: str, string: str) -> list[str]:
     """ Returns a iterable results object """
     def collect_matches():
         return [match.group() for match in re.finditer(pattern, string, re.S)]
@@ -60,11 +60,11 @@ async def sanitize(string: str, ctx: Context = None) -> str:
     return string
 
 
-async def find_links(string: str) -> List[str]:
+async def find_links(string: str) -> list[str]:
     """ Finds all the urls in a string """
     return await findall(url_expression, string)
 
 
-async def find_link(string: str) -> Optional[str]:
+async def find_link(string: str) -> str | None:
     """ Finds the first url in a string """
     return await search(url_expression, string)

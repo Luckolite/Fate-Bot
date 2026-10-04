@@ -95,7 +95,7 @@ class VcLog(commands.Cog):
             return await ctx.send("I don't have access to that channel")
         await ctx.send("Would you like me to delete all non vc-log messages?")
         msg = await self.bot.utils.get_message(ctx)
-        keep_clean = True if "yes" in msg.content.lower() else False
+        keep_clean = "yes" in msg.content.lower()
         if keep_clean and not perms.manage_messages:
             return await ctx.send("I'm missing manage_message permissions in the channel")
         if keep_clean:

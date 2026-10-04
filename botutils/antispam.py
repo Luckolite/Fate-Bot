@@ -10,8 +10,9 @@ from __future__ import annotations
 import re
 import statistics
 import unicodedata
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from copy import deepcopy
-from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 SCHEMA_VERSION = 2
@@ -523,11 +524,7 @@ def set_module_enabled(config: MutableMapping[str, Any], module: str, enabled: b
 def canonicalize_url(raw: str) -> str:
     """Canonicalize a destination while removing common tracking noise."""
     url = raw.strip("<>[](){}.,!?;:'\"|*_~`")
-    if url.lower().startswith("www."):
-        url = "https://" + url
-    elif url.lower().startswith("discord.gg/"):
-        url = "https://" + url
-    elif url.lower().startswith("discordapp.com/invite/"):
+    if url.lower().startswith(("www.", "discord.gg/", "discordapp.com/invite/")):
         url = "https://" + url
     parts = urlsplit(url)
     hostname = (parts.hostname or "").lower()
@@ -567,7 +564,7 @@ def extract_urls(content: str) -> list[str]:
 
 
 def normalize_content(
-    content: str, *, urls: Optional[Sequence[str]] = None
+    content: str, *, urls: Sequence[str] | None = None
 ) -> str:
     """Create a conservative fingerprint resistant to common spam mutations."""
     normalized = unicodedata.normalize("NFKC", content).casefold().translate(CONFUSABLES)
@@ -588,7 +585,7 @@ def normalize_content(
 
 
 def repeated_segment_score(
-    content: str, *, normalized: Optional[str] = None
+    content: str, *, normalized: str | None = None
 ) -> int:
     """Return the largest adjacent phrase or exact-line repetition count."""
     normalized = normalized if normalized is not None else normalize_content(content)

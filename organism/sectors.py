@@ -9,12 +9,12 @@ import re
 import secrets
 import threading
 from collections import OrderedDict
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import MappingProxyType
-from typing import Callable, Iterable, Iterator, Mapping
 
 from .api import Organism
 from .authority import sign_feedback

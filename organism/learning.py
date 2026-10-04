@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
-from typing import Iterable, Mapping
 
 from .config import OrganismConfig
 from .healing import evidence_decay

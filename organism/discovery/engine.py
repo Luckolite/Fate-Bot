@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Iterable, Mapping
 
 from .models import (
     QUESTION_TEMPLATES,

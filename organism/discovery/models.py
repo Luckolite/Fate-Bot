@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Mapping, TypeAlias, cast
+from typing import TypeAlias, cast
 
 from ..models import bounded_text, ensure_utc, unit
 

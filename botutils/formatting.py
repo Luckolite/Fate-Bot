@@ -8,12 +8,11 @@ A collection of helper functions
 :license: Proprietary, see LICENSE for details
 """
 
-from typing import Union
 
 from . import emojis
 
 
-def chain(obj: Union[list, str] = None, skip_first=False) -> str:
+def chain(obj: list | str = None, skip_first=False) -> str:
     """ Chains multiple lines of information """
     if obj is None:
         return ""

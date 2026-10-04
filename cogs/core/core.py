@@ -14,7 +14,6 @@ from copy import copy
 from datetime import datetime, timezone
 from importlib import reload
 from time import monotonic
-from typing import *
 
 import discord
 from discord import ui, SelectOption, Interaction, User
@@ -85,9 +84,9 @@ class Core(commands.Cog):
         }
         self.guild_cooldown = Cooldown(8, 10)
         self.user_cooldown = Cooldown(6, 10)
-        self.rate_limit_events: Dict[int, List[float]] = {}
-        self.ignored_until: Dict[int, float] = {}
-        self.owned_ignored_locations: Set[int] = set()
+        self.rate_limit_events: dict[int, list[float]] = {}
+        self.ignored_until: dict[int, float] = {}
+        self.owned_ignored_locations: set[int] = set()
         self.rate_limit_cleanup_task.start()
 
     async def _read_privacy(self, user_id):
@@ -98,7 +97,7 @@ class Core(commands.Cog):
             )
             return dict(await cur.fetchall())
 
-    async def get_privacy(self, user: Union[discord.User, discord.Member], item: str):
+    async def get_privacy(self, user: discord.User | discord.Member, item: str):
         # Share only in-flight reads. Sequential events still see current DB
         # settings without introducing a stale privacy preference cache.
         task = self.privacy_reads.get(user.id)
@@ -363,7 +362,7 @@ class Core(commands.Cog):
         )
         embed = discord.Embed(color=0x80B0FF)
         embed.set_author(
-            name=f"| Links | 📚",
+            name="| Links | 📚",
             icon_url="https://images-ext-1.discordapp.net/external/kgeJxDOsmMoy2gdBr44IFpg5hpYzqxTkOUqwjYZbPtI/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/506735111543193601/689cf49cf2435163ca420996bcb723a5.webp",
         )
         embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/501871950260469790/513636736492896271/mail-open-solid.png")
@@ -425,14 +424,14 @@ class Core(commands.Cog):
             e.description = formatted
             return await ctx.send(embed=e)
         if not ctx.author.guild_permissions.manage_guild:
-            return await ctx.send(f"You need manage_server permission(s) to use this")
+            return await ctx.send("You need manage_server permission(s) to use this")
         if not isinstance(ctx.guild, discord.Guild):
             return await ctx.send("This command can't be used in dm")
         if len(prefix) > 5:
             return await ctx.send("That prefix is too long")
         opts = ["yes", "no"]
         choice = await self.bot.utils.get_choice(ctx, opts, name="Allow personal prefixes?")
-        override = True if choice == "no" else False
+        override = choice == "no"
         if ctx.guild.id in self.bot.guild_prefixes:
             if not override and prefix == ".":
                 await save_prefix(self.bot, "GuildPrefixes", ctx.guild.id, None)
@@ -593,12 +592,15 @@ class Core(commands.Cog):
         if guild_id not in self.config:
             return await ctx.send("This server has no disabled commands")
         e = discord.Embed(color=discord.Color.red())
-        for channel_id, commands in self.config[guild_id].items():
+        for channel_id, disabled_commands in self.config[guild_id].items():
             await asyncio.sleep(0)
             channel = self.bot.get_channel(int(channel_id))
             if not channel:
                 continue
-            e.add_field(name=channel.name, value=", ".join([f"`{c}`" for c in commands]))
+            e.add_field(
+                name=channel.name,
+                value=", ".join(f"`{command}`" for command in disabled_commands),
+            )
             if len(e) > 5800:
                 await ctx.send(embed=e)
                 e = discord.Embed(color=discord.Color.red())
@@ -630,7 +632,7 @@ class Core(commands.Cog):
 
         if "everyone" == args.lstrip("@") or args == ctx.guild.default_role.mention:
             self.bot.restricted[guild_id]["roles"].append(ctx.guild.default_role.id)
-            restricted += f"\n@everyone"
+            restricted += "\n@everyone"
 
         for channel in ctx.message.channel_mentions:
             if channel.id in dat["channels"]:
@@ -671,7 +673,7 @@ class Core(commands.Cog):
             if ctx.guild.default_role.id not in dat["roles"]:
                 return await ctx.send("Everyone isn't restricted")
             self.bot.restricted[guild_id]["roles"].remove(ctx.guild.default_role.id)
-            unrestricted += f"\n@everyone"
+            unrestricted += "\n@everyone"
 
         for channel in ctx.message.channel_mentions:
             if channel.id in dat["channels"]:
@@ -763,7 +765,7 @@ class Core(commands.Cog):
                 extra = " (yours)"
             shard_ping += f"{emojis.boost} **Shard {shard}:** `{ping}`{extra}\n"
 
-        e.set_author(name=f"Bots Latency", icon_url=self.bot.user.display_avatar.url)
+        e.set_author(name="Bots Latency", icon_url=self.bot.user.display_avatar.url)
         e.set_thumbnail(url=img)
         e.description = send_ping + response_ping + shard_ping
         await msg.edit(embed=e)
@@ -796,7 +798,7 @@ class Core(commands.Cog):
                         "insert into privacy (user_id, item, value) values (%s, %s, %s) "
                         "on duplicate key update value = values(value);", overrides,
                     )
-            await ctx.reply(f"Updated your privacy settings")
+            await ctx.reply("Updated your privacy settings")
 
 
 async def setup(bot):
@@ -817,7 +819,7 @@ class Toggles(ui.View):
                 max_values=1
             )
 
-        def get_options(self) -> List[SelectOption]:
+        def get_options(self) -> list[SelectOption]:
             done = SelectOption(emoji=emojis.yes, label="Save and Exit", value="done")
             return [
                 done, *[
@@ -848,7 +850,7 @@ class Toggles(ui.View):
                 view=self.view
             )
 
-    def __init__(self, options: Union[list, dict], user: User, timeout: int = 60):
+    def __init__(self, options: list | dict, user: User, timeout: int = 60):
         """ Initializes the View to send and wait on """
         if isinstance(options, list):
             options = {

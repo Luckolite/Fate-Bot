@@ -21,7 +21,6 @@ from contextlib import suppress
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional
 
 import discord
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -399,20 +398,20 @@ def _render_slime_animation(data: bytes, directory: str) -> int:
 
 
 class Personalities:
-    types: List[str] = [
+    types: list[str] = [
         "psychopath", "depressed", "cheerful", "bright", "dark", "god", "deceiver", "funny", "fishy", "cool",
         "insecure", "lonely", "optimistic", "brave", "brilliant", "dreamer", "Nurturer", "Peaceful", "Overthinker",
         "Idealist", "Pussy", "Pick-me girl", "Lovable", "Edgy"
     ]
-    statuses: List[str] = [
+    statuses: list[str] = [
         "Ho", "Slut", "Loser", "The nice guy", "The dick", "Dank memer", "Annoying", "Parties hard", "Cool guy",
         "The chad", "Popular", "Unpopular", "Shut-in", "You need to leave the house to have a social status", "Eternal Virgin"
     ]
-    hobbies: List[str] = [
+    hobbies: list[str] = [
         "Art", "Drawing", "Painting", "Singing", "Writing", "Anime", "Memes", "Minecraft", "Sucking dick",
         "Gaming", "Programming", "Work", "Swimming","Crying"
     ]
-    genres: List[str] = [
+    genres: list[str] = [
         "Nightcore", "Heavy Metal", "Alternative", "Electronic", "Classical", "Dubstep", "Jazz", "Pop", "Rap"
     ]
 
@@ -475,73 +474,6 @@ class Fun(
         channel = self.dat.setdefault(message.channel.id, {})
         channel["last"] = deleted
         channel[message.author.id] = deleted
-
-    # @slash_command(name="snipe", guild_ids=[397415086295089155])
-    # async def _snipe(
-    #     self, ctx,
-    #     user: Option(discord.User, required=False),
-    #     new_toggle: Option(
-    #         str, "Toggle",
-    #         required=False,
-    #         choices=["Enable", "Disable"]
-    #     )
-    # ):
-    #     """ Enables, or disables sniping """
-    #     guild_id = ctx.guild.id
-    #     async with self.bot.utils.cursor() as cur:
-    #         if new_toggle:
-    #             if not ctx.author.guild_permissions.administrator:
-    #                 return await ctx.send("Only administrators can enable this")
-    #             await cur.execute(f"select * from snipe where guild_id = {guild_id};")
-    #             if cur.rowcount:
-    #                 if new_toggle == "Enable":
-    #                     return await ctx.send("Sniping is already enabled")
-    #                 await cur.execute(f"delete from snipe where guild_id = {guild_id};")
-    #                 await ctx.send("Disabled sniping", ephemeral=True)
-    #             else:
-    #                 if new_toggle == "Disable":
-    #                     return await ctx.send("Sniping isn't enabled")
-    #                 await cur.execute(f"insert into snipe values ({guild_id});")
-    #                 await ctx.respond("Enabled sniping", ephemeral=True)
-    #             return
-#
-    #         await cur.execute(f"select * from snipe where guild_id = {guild_id};")
-    #         if not cur.rowcount:
-    #             return await ctx.respond(
-    #                 f"Snipe requires being enabled by an administrator. Use `{ctx.prefix}snipe enable`",
-    #                 ephemeral=True
-    #             )
-#
-    #         channel_id = ctx.channel.id
-    #         if channel_id not in self.dat:
-    #             return await ctx.respond("Nothing to snipe", ephemeral=True)
-#
-    #         # Snipe a specific user
-    #         if user:
-    #             if user.id not in self.dat[channel_id]:
-    #                 return await ctx.respond("Nothing to snipe", ephemeral=True)
-    #             msg, time = self.dat[channel_id][user.id]
-    #             del self.dat[channel_id][user.id]
-#
-    #         # Snipe the last message in the channel
-    #         else:
-    #             msg, time = self.dat[channel_id]["last"]
-    #             del self.dat[channel_id]
-#
-    #         is_admin = ctx.author.guild_permissions.administrator
-    #         if msg.embeds:
-    #             return await ctx.respond(f"{msg.author}s message was | deleted {format_date(time)} ago",
-    #                                   embed=msg.embeds[0])
-    #         if len(msg.content) > 256 and not is_admin:
-    #             return await ctx.respond("And **wHy** would I snipe a message *that*  big", ephemeral=True)
-#
-    #         e = discord.Embed(color=msg.author.color)
-    #         e.set_author(name=msg.author, icon_url=msg.author.display_avatar.url)
-    #         if not is_admin:
-    #             msg.content = await sanitize(msg.content[:4096], ctx)
-    #         e.description = msg.content
-    #         e.set_footer(text=f"🗑 {format_date(time).replace('.0', '')} ago")
-    #         await ctx.respond(embed=e, ephemeral=True)
 
     @commands.command(name="snipe", description="Shows the last deleted message")
     @commands.cooldown(2, 10, commands.BucketType.channel)
@@ -846,7 +778,7 @@ class Fun(
             pass
 
     @staticmethod
-    def _message_media_urls(message: discord.Message) -> List[str]:
+    def _message_media_urls(message: discord.Message) -> list[str]:
         urls = [attachment.url for attachment in message.attachments]
         urls.extend(
             embed.image.url
@@ -1306,15 +1238,15 @@ class Fun(
     async def magik_slash(
         self,
         interaction: discord.Interaction,
-        media_1: Optional[discord.Attachment] = None,
-        media_2: Optional[discord.Attachment] = None,
-        media_3: Optional[discord.Attachment] = None,
-        media_4: Optional[discord.Attachment] = None,
-        user_1: Optional[discord.User] = None,
-        user_2: Optional[discord.User] = None,
-        user_3: Optional[discord.User] = None,
-        user_4: Optional[discord.User] = None,
-        urls: Optional[str] = None,
+        media_1: discord.Attachment | None = None,
+        media_2: discord.Attachment | None = None,
+        media_3: discord.Attachment | None = None,
+        media_4: discord.Attachment | None = None,
+        user_1: discord.User | None = None,
+        user_2: discord.User | None = None,
+        user_3: discord.User | None = None,
+        user_4: discord.User | None = None,
+        urls: str | None = None,
     ):
         """Slash-command entry point that also works from user installations."""
         attachments = tuple(filter(None, (media_1, media_2, media_3, media_4)))
@@ -1417,7 +1349,7 @@ class Fun(
     @commands.cooldown(1, 8, commands.BucketType.user)
     @commands.max_concurrency(2, commands.BucketType.default, wait=False)
     @commands.bot_has_permissions(attach_files=True)
-    async def slime(self, ctx, user: Optional[discord.User] = None):
+    async def slime(self, ctx, user: discord.User | None = None):
         """Turn a user's avatar into a short slapstick car animation."""
         target = user or ctx.author
         if target.id != ctx.author.id and not await self.bot.get_privacy(

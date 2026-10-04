@@ -12,13 +12,14 @@ import asyncio
 import json
 import re
 import traceback
+from collections.abc import Generator, Sequence
 from contextlib import suppress
 from copy import copy, deepcopy
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from os import path
 from time import time, monotonic
-from typing import *
+from typing import Any
 from uuid import uuid4
 from weakref import WeakValueDictionary
 
@@ -78,7 +79,10 @@ from botutils import (
     s,
     url_from
 )
-from botutils.colors import *
+from botutils.colors import (
+    blue, cyan, dark_green, fate, generate_rainbow_rgb, green, light_grey,
+    lime_green, orange, pink, purple, red, white, yellow,
+)
 from botutils.log_archive import (
     DEFAULT_RETENTION_DAYS,
     MAX_ATTACHMENT_BYTES,
@@ -111,9 +115,9 @@ default_config = {
 # Gateway audit entries arrive without a guaranteed ordering relative to the
 # event they describe. Keep a tiny shared window so event handlers can prefer
 # the exact gateway entry, then fall back to a targeted REST lookup.
-audit_entry_cache: Dict[int, list] = {}
-audit_rest_tasks: Dict[int, asyncio.Task] = {}
-audit_rest_cache: Dict[int, tuple] = {}
+audit_entry_cache: dict[int, list] = {}
+audit_rest_tasks: dict[int, asyncio.Task] = {}
+audit_rest_cache: dict[int, tuple] = {}
 AUDIT_REST_CACHE_SECONDS = 2.0
 MAX_AUDIT_REST_CACHE_GUILDS = 4096
 
@@ -202,7 +206,7 @@ def count_message_lines(content: str) -> int:
     return content.count("\n") + 1 if content else 0
 
 
-def format_member_role_action(actor_mention: Optional[str], verb: str, roles) -> str:
+def format_member_role_action(actor_mention: str | None, verb: str, roles) -> str:
     """Describe a role change as a compact actor-first action."""
     role_mentions = ", ".join(role.mention for role in roles)
     if actor_mention:
@@ -210,7 +214,7 @@ def format_member_role_action(actor_mention: Optional[str], verb: str, roles) ->
     return f"{verb.title()} {role_mentions}"
 
 
-def message_author_role_line(author: Union[User, Member]) -> str:
+def message_author_role_line(author: User | Member) -> str:
     """Describe a cached member's top role, if member data is available."""
     top_role = getattr(author, "top_role", None)
     if top_role is None:
@@ -221,7 +225,7 @@ def message_author_role_line(author: Union[User, Member]) -> str:
     )
 
 
-def message_edit_time(message: Message, fallback: Optional[datetime] = None) -> datetime:
+def message_edit_time(message: Message, fallback: datetime | None = None) -> datetime:
     """Return Discord's edit time, or the listener time when it is absent."""
     return message.edited_at or fallback or utcnow()
 
@@ -232,7 +236,7 @@ def poll_question_text(poll: Any) -> str:
     return str(getattr(question, "text", question))
 
 
-def message_type_label(message_type: Any) -> Optional[str]:
+def message_type_label(message_type: Any) -> str | None:
     """Return a friendly label for non-default Discord message types."""
     name = getattr(message_type, "name", None)
     if not name or name == "default":
@@ -361,7 +365,7 @@ def is_guild_owner():
     return commands.check(predicate)
 
 
-def chain(obj: Union[list, str] = None, *args, skip_first=True) -> str:
+def chain(obj: list | str = None, *args, skip_first=True) -> str:
     """ Chain replies an embed description """
     if isinstance(obj, str):
         obj = [obj]
@@ -375,7 +379,7 @@ def chain(obj: Union[list, str] = None, *args, skip_first=True) -> str:
     )
 
 
-def get_avatar(user: Union[Member, User]) -> Optional[str]:
+def get_avatar(user: Member | User) -> str | None:
     if not user.avatar:
         return user.display_avatar.url
     return user.avatar.url
@@ -452,7 +456,7 @@ def format_profile_change(attribute: str, before: Any, after: Any) -> str:
 class AuditLogSearch:
     def __init__(
         self,
-        guild: Optional[Guild],
+        guild: Guild | None,
         *actions: AuditLogAction,
         target=None,
         channel=None,
@@ -465,24 +469,24 @@ class AuditLogSearch:
         self.expected_message_id = getattr(message_id, "id", message_id)
 
         # Awaited vars
-        self.action: Optional[AuditLogAction] = None
-        self.entry_id: Optional[int] = None
-        self.created_at: Optional[datetime] = None
+        self.action: AuditLogAction | None = None
+        self.entry_id: int | None = None
+        self.created_at: datetime | None = None
 
-        self.user: Optional[Union[User, Member]] = None
+        self.user: User | Member | None = None
         self.user_mention: str = "Unknown-User"
-        self.user_avatar: Optional[str] = None
-        self.user_display_avatar: Optional[str] = None
+        self.user_avatar: str | None = None
+        self.user_display_avatar: str | None = None
 
-        self.target: Optional[Any] = None
+        self.target: Any | None = None
         self.target_mention: str = "Unknown-User"
-        self.target_avatar: Optional[str] = None
-        self.target_display_avatar: Optional[str] = None
+        self.target_avatar: str | None = None
+        self.target_display_avatar: str | None = None
 
-        self.reason: Optional[str] = None
-        self.extra: Optional[Any] = None
-        self.before: Optional[AuditLogDiff] = None
-        self.after: Optional[AuditLogDiff] = None
+        self.reason: str | None = None
+        self.extra: Any | None = None
+        self.before: AuditLogDiff | None = None
+        self.after: AuditLogDiff | None = None
 
     def __await__(self) -> Generator[Any, None, "AuditLogSearch"]:
         """ Fills in the search results """
@@ -607,7 +611,7 @@ class Log(object):
 
 class LoggerHealthView(ui.View):
     """Refreshable logger health display bound to the command author."""
-    def __init__(self, logger: "Logger", author_id: int, guild_id: Optional[str] = None):
+    def __init__(self, logger: "Logger", author_id: int, guild_id: str | None = None):
         super().__init__(timeout=300)
         self.logger = logger
         self.author_id = author_id
@@ -828,7 +832,7 @@ class Logger(commands.Cog):
         self.config = {}
         self.path = "./data/userdata/secure-log.json"
         if path.isfile(self.path):
-            with open(self.path, "r") as f:
+            with open(self.path) as f:
                 self.config = json.load(f)  # type: dict
         self._config_migration_pending = self._normalize_config()
 
@@ -1056,8 +1060,8 @@ class Logger(commands.Cog):
         log_type: str,
         snapshot: dict,
         *,
-        now: Optional[float] = None,
-    ) -> Optional[str]:
+        now: float | None = None,
+    ) -> str | None:
         """Aggregate queue overflow alerts so one burst cannot ping repeatedly."""
         now = time() if now is None else now
         alerts = getattr(self, "queue_full_alerts", None)
@@ -1460,7 +1464,7 @@ class Logger(commands.Cog):
         return True
 
     @classmethod
-    def format_log_entity(cls, value: Any) -> Optional[str]:
+    def format_log_entity(cls, value: Any) -> str | None:
         """Format a Discord object as a readable mention and name."""
         if not cls.has_log_value(value):
             return None
@@ -1542,7 +1546,7 @@ class Logger(commands.Cog):
         return " • ".join(parts)
 
     @classmethod
-    def format_message_interaction(cls, message: Message) -> Optional[str]:
+    def format_message_interaction(cls, message: Message) -> str | None:
         """Render interaction metadata without exposing Discord object reprs."""
         metadata = getattr(message, "interaction_metadata", None)
         legacy = getattr(message, "_interaction", None)
@@ -1601,7 +1605,7 @@ class Logger(commands.Cog):
         return "\n".join(lines)[:1024]
 
     @staticmethod
-    async def member_export_file(guild: Guild, heading: str, members) -> Optional[File]:
+    async def member_export_file(guild: Guild, heading: str, members) -> File | None:
         """Build a useful member export without exceeding the guild upload cap."""
         members = list(members or [])
         if not members:
@@ -1725,7 +1729,7 @@ class Logger(commands.Cog):
         return details
 
     @classmethod
-    def _add_event_field(cls, embed: Embed, name: str, value: Optional[str], *, inline=True) -> bool:
+    def _add_event_field(cls, embed: Embed, name: str, value: str | None, *, inline=True) -> bool:
         """Add a metadata field without crossing Discord's hard embed limits."""
         if not cls.has_log_value(value) or len(embed.fields) >= 25:
             return False
@@ -1917,8 +1921,8 @@ class Logger(commands.Cog):
     def _append_classic_context(
         cls,
         embed: Embed,
-        rows: list[Tuple[str, str]],
-    ) -> list[Tuple[str, str]]:
+        rows: list[tuple[str, str]],
+    ) -> list[tuple[str, str]]:
         """Fold structured metadata into the classic chained description layout."""
         if not rows:
             return []
@@ -1974,7 +1978,7 @@ class Logger(commands.Cog):
         return overflow
 
     @staticmethod
-    def _normalise_link(link) -> Optional[Tuple[str, str, Optional[str]]]:
+    def _normalise_link(link) -> tuple[str, str, str | None] | None:
         if isinstance(link, dict):
             label = link.get("label")
             url = link.get("url")
@@ -2022,7 +2026,7 @@ class Logger(commands.Cog):
                 embed.url = primary_link[1]
 
         description = str(embed.description or "")
-        context_rows: list[Tuple[str, str]] = []
+        context_rows: list[tuple[str, str]] = []
         if (
             log.target is not None
             and not (log.type == "attachment_update" and primary_link is not None)
@@ -2174,7 +2178,7 @@ class Logger(commands.Cog):
         guild_id: str,
         channel,
         log: Log,
-    ) -> Optional[Message]:
+    ) -> Message | None:
         """Edit the previous matching card and return its delivery message."""
         deliveries = self.last_log_deliveries.setdefault(guild_id, {})
         previous = deliveries.get(channel.id)
@@ -2203,7 +2207,7 @@ class Logger(commands.Cog):
     async def update_collapsed_delivery(
         self,
         delivery: dict,
-        count: Optional[int] = None,
+        count: int | None = None,
     ) -> bool:
         """Apply the latest occurrence count to a collapsed delivery."""
         count = delivery["count"] if count is None else count
@@ -2264,7 +2268,7 @@ class Logger(commands.Cog):
         }
 
     @staticmethod
-    def snowflake_id(value: Any) -> Optional[int]:
+    def snowflake_id(value: Any) -> int | None:
         """Normalize a stored Discord snowflake without accepting booleans."""
         if isinstance(value, bool):
             return None
@@ -2472,7 +2476,7 @@ class Logger(commands.Cog):
         self,
         log: Log,
         status: str,
-        message: Optional[Message] = None,
+        message: Message | None = None,
     ) -> None:
         if not log.archive_staged:
             return
@@ -2491,7 +2495,7 @@ class Logger(commands.Cog):
         if not accepted:
             log.archive_staged = False
 
-    def build_log_view(self, links) -> Optional[ui.View]:
+    def build_log_view(self, links) -> ui.View | None:
         """Build a modern, link-only action row that can coexist with embeds."""
         buttons = []
         seen_urls = set()
@@ -2576,7 +2580,7 @@ class Logger(commands.Cog):
         return embed
 
     @staticmethod
-    def embed_batches(embeds: Sequence[Embed]) -> List[List[Embed]]:
+    def embed_batches(embeds: Sequence[Embed]) -> list[list[Embed]]:
         """Split embeds across messages while respecting 10/6,000 limits."""
         batches = []
         current = []
@@ -2634,7 +2638,7 @@ class Logger(commands.Cog):
         guild: Guild,
         channel,
         first: Log,
-    ) -> tuple[List[Log], Optional[Log]]:
+    ) -> tuple[list[Log], Log | None]:
         """Collect compatible consecutive events for a short delivery window."""
         logs = [first]
         if not self.log_can_join_batch(
@@ -2765,7 +2769,7 @@ class Logger(commands.Cog):
                 await message.channel.send(**options)
 
     @staticmethod
-    def health_timestamp(timestamp: Optional[float]) -> str:
+    def health_timestamp(timestamp: float | None) -> str:
         return f"<t:{int(timestamp)}:R>" if timestamp else "Not yet"
 
     @staticmethod
@@ -2776,7 +2780,7 @@ class Logger(commands.Cog):
                 return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
             value /= 1024
 
-    async def archive_command_config(self, ctx: Context) -> Optional[dict]:
+    async def archive_command_config(self, ctx: Context) -> dict | None:
         guild_id = str(ctx.guild.id)
         config = self.config.get(guild_id)
         if config is None:
@@ -2985,7 +2989,7 @@ class Logger(commands.Cog):
         """ Saves local variables """
         await self.bot.utils.save_json(self.path, self.config)
 
-    async def get_or_fetch(self, channel_id: int) -> Optional[Union[TextChannel, Thread]]:
+    async def get_or_fetch(self, channel_id: int) -> TextChannel | Thread | None:
         if not channel_id:
             return None
         if channel := self.bot.get_channel(channel_id):
@@ -3363,7 +3367,7 @@ class Logger(commands.Cog):
             for _queued_log in logs:
                 self.queue[guild_id].task_done()
 
-    async def mirror_to_category_thread(self, guild: Guild, channel, log: Log) -> List[Message]:
+    async def mirror_to_category_thread(self, guild: Guild, channel, log: Log) -> list[Message]:
         """Mirror logs into category threads for the guilds using that layout."""
         if guild.id not in self.threaded_log_guilds or not isinstance(channel, TextChannel):
             return []
@@ -3592,7 +3596,7 @@ class Logger(commands.Cog):
 
     @logger_archive.command(name="files", aliases=["attachments", "images"])
     @commands.has_permissions(administrator=True)
-    async def logger_archive_files(self, ctx: Context, enabled: Optional[bool] = None):
+    async def logger_archive_files(self, ctx: Context, enabled: bool | None = None):
         config = await self.archive_command_config(ctx)
         if config is None:
             return
@@ -3644,7 +3648,7 @@ class Logger(commands.Cog):
     @logger_archive.command(name="recovery", aliases=["messages", "cache"])
     @commands.has_permissions(administrator=True)
     async def logger_archive_recovery(
-        self, ctx: Context, enabled: Optional[bool] = None
+        self, ctx: Context, enabled: bool | None = None
     ):
         config = await self.archive_command_config(ctx)
         if config is None:
@@ -3663,8 +3667,8 @@ class Logger(commands.Cog):
         self,
         guild: Guild,
         *,
-        query: Optional[str] = None,
-    ) -> Optional[Embed]:
+        query: str | None = None,
+    ) -> Embed | None:
         """Build a private history result embed shared by commands and the menu."""
         result = await self.local_archive.search_logs(
             str(guild.id), limit=10, query=query
@@ -3774,7 +3778,7 @@ class Logger(commands.Cog):
         await ctx.send(embed=self.build_health_embed(guild_id), view=view)
 
     @logger.command(name="dashboard", description="Shows global logger queue and worker health")
-    async def logger_dashboard(self, ctx: Context, guild_id: Optional[int] = None):
+    async def logger_dashboard(self, ctx: Context, guild_id: int | None = None):
         if ctx.guild.id != self.dashboard_guild_id:
             return await ctx.send("The global logger dashboard isn't available in this server")
 
@@ -4036,7 +4040,7 @@ class Logger(commands.Cog):
         await self.save_data()
 
     @logger.command(name="move", description="Sets a log type to send to a diff channel")
-    async def _move(self, ctx, log_type=None, channel: Union[TextChannel, Thread] = None):
+    async def _move(self, ctx, log_type=None, channel: TextChannel | Thread = None):
         """ Switches a log between multi and single """
         guild_id = str(ctx.guild.id)
         if guild_id not in self.config:
@@ -4104,7 +4108,7 @@ class Logger(commands.Cog):
         self,
         ctx: Context,
         *,
-        target: Union[User, Member, TextChannel, VoiceChannel],
+        target: User | Member | TextChannel | VoiceChannel,
     ):
         """ ignore channels and/or bots """
         guild_id = str(ctx.guild.id)
@@ -4134,7 +4138,7 @@ class Logger(commands.Cog):
         self,
         ctx,
         *,
-        target: Union[User, Member, TextChannel, VoiceChannel],
+        target: User | Member | TextChannel | VoiceChannel,
     ):
         """ unignore channels and/or bots """
         guild_id = str(ctx.guild.id)
@@ -5099,7 +5103,7 @@ class Logger(commands.Cog):
         )
 
     @commands.Cog.listener()
-    async def on_guild_update(self, before: Guild, after: Guild):  # due for rewrite
+    async def on_guild_update(self, before: Guild, after: Guild):
         guild_id = str(after.id)
         if guild_id in self.config:
             audit = await AuditLogSearch(after, Action.guild_update, target=after)
@@ -5118,14 +5122,11 @@ class Logger(commands.Cog):
                 e.description = f"To `{after.name}`" \
                                 f"\nFrom `{before.name}`" \
                                 f"\nBy {audit.user_mention}"
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "server_rename",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": before.name,
                         "➡️ After": after.name,
@@ -5156,95 +5157,17 @@ class Logger(commands.Cog):
                     if file:
                         e.set_image(url="attachment://" + fn)
 
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "new_server_icon",
-                    embed=e,
+                    e,
                     file=file,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
                     details={"🖼️ New State": "Changed" if after.icon else "Removed"},
                 )
 
-            before_url = url_from(before.banner)
-            after_url = url_from(after.banner)
-            if before_url != after_url:
-                e = Embed(color=lime_green)
-                e.set_author(name="Banner Changed", icon_url=audit.user_display_avatar)
-                fn = "before.png"
-                if before_url and ".gif" in before_url:
-                    fn = "before.gif"
-                file = None
-                if before_url:
-                    with suppress(NotFound, Forbidden, HTTPException, ClientOSError):
-                        file = await before.banner.to_file(filename=fn)
-                if file:
-                    e.set_thumbnail(url="attachment://" + fn)
-                e.description = (
-                    f"{audit.user_mention} "
-                    f"{'set' if after_url else 'removed'} the server banner"
-                )
-                if after_url:
-                    e.set_image(url=after_url)
-                elif file:
-                    e.set_image(url="attachment://" + fn)
-                self.add_to_queue(
-                    guild_id,
-                    "new_server_banner",
-                    embed=e,
-                    file=file,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
-                    details={"🖼️ New State": "Changed" if after.banner else "Removed"},
-                )
-
-            before_url = url_from(before.splash)
-            after_url = url_from(after.splash)
-            if before_url != after_url:
-                e = Embed(color=lime_green)
-                e.set_author(name="Splash Changed", icon_url=audit.user_display_avatar)
-                fn = "before.png"
-                if before_url and ".gif" in before_url:
-                    fn = "before.gif"
-                file = None
-                if before_url:
-                    with suppress(NotFound, Forbidden, HTTPException, ClientOSError):
-                        file = await before.splash.to_file(filename=fn)
-                if file:
-                    e.set_thumbnail(url="attachment://" + fn)
-                e.description = (
-                    f"{audit.user_mention} "
-                    f"{'set' if after_url else 'removed'} the server splash"
-                )
-                if after_url:
-                    e.set_image(url=after_url)
-                elif file:
-                    e.set_image(url="attachment://" + fn)
-                self.add_to_queue(
-                    guild_id,
-                    "new_server_splash",
-                    embed=e,
-                    file=file,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
-                    details={"🖼️ New State": "Changed" if after.splash else "Removed"},
-                )
-
-            # if before.region != after.region:
-            #     e = create_template_embed()
-            #     e.description = (
-            #         f"> 》__**Region Changed**__《" f"\n**Changed by:** {dat['user']}"
-            #     )
-            #     e.add_field(name="Before", value=str(before.region), inline=False)
-            #     e.add_field(name="After", value=str(after.region), inline=False)
-            #     log = Log("region_change", embed=e)
-            #     self.add_to_queue(guild_id, log)
+            await self._log_guild_artwork_change(before, after, audit, "banner")
+            await self._log_guild_artwork_change(before, after, audit, "splash")
 
             if before.afk_timeout != after.afk_timeout:
                 e = make_embed("AFK Timeout Changed")
@@ -5255,14 +5178,11 @@ class Logger(commands.Cog):
                         e.description = chain(e.description)
                 else:
                     e.description = f"{audit.user} disabled afk timeout"
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "afk_timeout_change",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": format_date(seconds=before.afk_timeout),
                         "➡️ After": format_date(seconds=after.afk_timeout),
@@ -5280,14 +5200,11 @@ class Logger(commands.Cog):
                     desc = f"{audit.user_mention} removed the afk channel\n" \
                            f"Was {before.afk_channel.mention}"
                 e.description = chain(desc)
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "afk_channel_change",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": before.afk_channel,
                         "➡️ After": after.afk_channel,
@@ -5305,14 +5222,13 @@ class Logger(commands.Cog):
                     f"To {after.owner.mention}\n"
                     f"From {before.owner.mention}"
                 )
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "owner_change",
-                    embed=e,
-                    actor=audit.user,
+                    e,
                     target=after.owner,
                     target_label="New Owner",
-                    reason=audit.reason,
                     details={"⬅️ Previous Owner": before.owner},
                 )
 
@@ -5330,14 +5246,11 @@ class Logger(commands.Cog):
                     e.description += f"\n\n{changes}"
                     added = sorted(set(after.features) - set(before.features))
                     removed = sorted(set(before.features) - set(after.features))
-                    self.add_to_queue(
-                        guild_id,
+                    self._queue_guild_change(
+                        after,
+                        audit,
                         "features_change",
-                        embed=e,
-                        actor=audit.user,
-                        target=after,
-                        target_label="Server",
-                        reason=audit.reason,
+                        e,
                         details={
                             "➕ Added": added or ["None"],
                             "➖ Removed": removed or ["None"],
@@ -5431,14 +5344,11 @@ class Logger(commands.Cog):
                         f"{audit.user_mention} removed the system channel\n"
                         f"Was {before.system_channel.mention}"
                     )
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "system_channel",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": before.system_channel,
                         "➡️ After": after.system_channel,
@@ -5451,8 +5361,9 @@ class Logger(commands.Cog):
 
             if before.system_channel_flags != after.system_channel_flags:
                 flags = ""
-                for i, (flag, setting) in enumerate(list(after.system_channel_flags)):
-                    if setting != list(before.system_channel_flags)[i][1]:
+                previous_flags = dict(before.system_channel_flags)
+                for flag, setting in after.system_channel_flags:
+                    if setting != previous_flags[flag]:
                         flags += f"\n{emojis.on if setting else emojis.off} {flag.replace('_', ' ').title()}"
                 e = make_embed("System Channel Flags")
                 if emojis.on not in flags:
@@ -5462,14 +5373,13 @@ class Logger(commands.Cog):
                 else:
                     action = "updated"
                 e.description = f"{audit.user_mention} {action} flags\n{flags}"
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "system_channel_flags",
-                    embed=e,
-                    actor=audit.user,
+                    e,
                     target=after.system_channel or after,
                     target_label="System Channel" if after.system_channel else "Server",
-                    reason=audit.reason,
                     details={"⚙️ Changed Flags": flags.strip() or "Unknown"},
                 )
 
@@ -5477,14 +5387,11 @@ class Logger(commands.Cog):
                 action = "enabled" if after.mfa_level.name == "require_2fa" else "disabled"
                 e = make_embed("2FA Requirement Changed")
                 e.description = f"{audit.user_mention} {action} 2-factor-authentication for moderation"
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "2fa_update",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": before.mfa_level,
                         "➡️ After": after.mfa_level,
@@ -5506,14 +5413,11 @@ class Logger(commands.Cog):
                 e = make_embed("Verification Level Changed")
                 e.description = f"Set to `{after.verification_level}` by {audit.user_mention}\n\n" \
                                 f"***{description}***"
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "verification_level",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": before.verification_level,
                         "➡️ After": after.verification_level,
@@ -5528,14 +5432,11 @@ class Logger(commands.Cog):
                     action = "Enabled for everyone"
                 e = make_embed("Explicit Filter Updated")
                 e.description = chain(f"{action}\nBy {audit.user_mention}")
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "explicit_filter",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": before.explicit_content_filter,
                         "➡️ After": after.explicit_content_filter,
@@ -5548,14 +5449,11 @@ class Logger(commands.Cog):
                     mentions_for = "only mentions"
                 e = make_embed("Default Notifications")
                 e.description = chain(f"Set to notify for {mentions_for}\nBy {audit.user_mention}")
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "default_notifications",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details={
                         "⬅️ Before": before.default_notifications,
                         "➡️ After": after.default_notifications,
@@ -5589,19 +5487,61 @@ class Logger(commands.Cog):
                 e.description = f"{audit.user_mention} updated **{after.name}**"
                 if before.discovery_splash != after.discovery_splash and after.discovery_splash:
                     e.set_image(url=after.discovery_splash.url)
-                self.add_to_queue(
-                    guild_id,
+                self._queue_guild_change(
+                    after,
+                    audit,
                     "server_settings",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Server",
-                    reason=audit.reason,
+                    e,
                     details=modern_settings,
                     created_at=(audit.created_at.timestamp() if audit.created_at else None),
                 )
 
-            # Union[emoji_limit, bitrate_limit, filesize_limit]
+    def _queue_guild_change(self, guild, audit, log_type, embed, **metadata):
+        """Queue an audited guild change with shared server context."""
+        context = {
+            "actor": audit.user,
+            "target": guild,
+            "target_label": "Server",
+            "reason": audit.reason,
+            **metadata,
+        }
+        self.add_to_queue(str(guild.id), log_type, embed=embed, **context)
+
+    async def _log_guild_artwork_change(self, before, after, audit, attribute: str):
+        """Log banner and splash changes, keeping previous artwork when available."""
+        before_asset = getattr(before, attribute)
+        after_asset = getattr(after, attribute)
+        before_url = url_from(before_asset)
+        after_url = url_from(after_asset)
+        if before_url == after_url:
+            return
+
+        filename = "before.gif" if before_url and ".gif" in before_url else "before.png"
+        file = None
+        if before_url:
+            with suppress(NotFound, Forbidden, HTTPException, ClientOSError):
+                file = await before_asset.to_file(filename=filename)
+
+        embed = Embed(color=lime_green)
+        embed.set_author(name=f"{attribute.title()} Changed", icon_url=audit.user_display_avatar)
+        if file:
+            embed.set_thumbnail(url="attachment://" + filename)
+        embed.description = (
+            f"{audit.user_mention} "
+            f"{'set' if after_url else 'removed'} the server {attribute}"
+        )
+        if after_url:
+            embed.set_image(url=after_url)
+        elif file:
+            embed.set_image(url="attachment://" + filename)
+        self._queue_guild_change(
+            after,
+            audit,
+            f"new_server_{attribute}",
+            embed,
+            file=file,
+            details={"🖼️ New State": "Changed" if after_asset else "Removed"},
+        )
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: TextChannel):
@@ -5717,7 +5657,7 @@ class Logger(commands.Cog):
             )
 
     @commands.Cog.listener()
-    async def on_guild_channel_update(self, before, after):  # due for rewrite
+    async def on_guild_channel_update(self, before, after):
         guild_id = str(after.guild.id)
         if guild_id in self.config:
             audit = await AuditLogSearch(
@@ -5834,70 +5774,7 @@ class Logger(commands.Cog):
                         links=[("Open channel", after.jump_url, "↗️")],
                     )
 
-            if before.overwrites != after.overwrites:
-                e = Embed(color=orange)
-                e.set_author(name="Overwrites Updated", icon_url=audit.user_avatar)
-                e.set_thumbnail(url=audit.user_display_avatar)
-                for obj, permissions in before.overwrites.items():
-                    await asyncio.sleep(0)
-                    target_name = overwrite_target_name(after.guild, obj)
-                    if obj not in after.overwrites:
-                        perms = [
-                             f"{emojis.on if value else emojis.off} {perm}"
-                             for perm, value in list(permissions)
-                             if value is not None
-                        ]
-                        e.add_field(
-                            name=f"❌ {target_name} removed",
-                            value="\n".join(perms) if perms else "`had no permissions`"[:1024],
-                            inline=False,
-                        )
-                        continue
-
-                    after_values = list(after.overwrites[obj])
-                    if list(permissions) != after_values:
-                        updated_perms = [
-                            f"{emojis.on if after_values[i][1] else emojis.off} {perm}"
-                              for i, (perm, value) in enumerate(list(permissions))
-                                if (value != after_values[i][1])
-                        ]
-                        e.add_field(
-                            name=f"<:edited:550291696861315093> {target_name}",
-                            value="\n".join(updated_perms)[:1024],
-                            inline=False,
-                        )
-
-                for obj, permissions in after.overwrites.items():
-                    await asyncio.sleep(0)
-                    if obj not in before.overwrites:
-                        target_name = overwrite_target_name(after.guild, obj)
-                        perms = [
-                            f"{emojis.on if value else emojis.off} {perm}"
-                              for perm, value in list(permissions)
-                                if value is not None
-                        ]
-                        e.add_field(
-                            name=f"<:plus:548465119462424595> {target_name}",
-                            value="\n".join(perms) if perms else "`has no permissions`"[:1024],
-                            inline=False,
-                        )
-
-                e.description = f"{audit.user_mention} edited {after.mention}"
-                self.add_to_queue(
-                    guild_id,
-                    "channel_overwrites",
-                    embed=e,
-                    actor=audit.user,
-                    target=after,
-                    target_label="Channel",
-                    reason=audit.reason,
-                    details={
-                        "🔐 Before": len(before.overwrites),
-                        "🔐 After": len(after.overwrites),
-                        "🔗 Synced": getattr(after, "permissions_synced", None),
-                    },
-                    links=[("Open channel", after.jump_url, "↗️")],
-                )
+            await self._log_channel_overwrite_changes(before, after, audit)
 
             if isinstance(before, ForumChannel):
                 if before.available_tags != after.available_tags:
@@ -6028,6 +5905,74 @@ class Logger(commands.Cog):
                     details=setting_changes,
                     links=[("Open channel", after.jump_url, "↗️")],
                 )
+
+    async def _log_channel_overwrite_changes(self, before, after, audit):
+        """Log removed, changed, and added overwrites in gateway order."""
+        before_overwrites = before.overwrites
+        after_overwrites = after.overwrites
+        if before_overwrites == after_overwrites:
+            return
+        guild_id = str(after.guild.id)
+        embed = Embed(color=orange)
+        embed.set_author(name="Overwrites Updated", icon_url=audit.user_avatar)
+        embed.set_thumbnail(url=audit.user_display_avatar)
+        for target, permissions in before_overwrites.items():
+            await asyncio.sleep(0)
+            target_name = overwrite_target_name(after.guild, target)
+            if target not in after_overwrites:
+                permission_lines = [
+                    f"{emojis.on if value else emojis.off} {permission}"
+                    for permission, value in permissions
+                    if value is not None
+                ]
+                embed.add_field(
+                    name=f"❌ {target_name} removed",
+                    value="\n".join(permission_lines) if permission_lines else "`had no permissions`",
+                    inline=False,
+                )
+                continue
+            current_permissions = dict(after_overwrites[target])
+            changed_lines = [
+                f"{emojis.on if current_permissions[permission] else emojis.off} {permission}"
+                for permission, value in permissions
+                if value != current_permissions[permission]
+            ]
+            if changed_lines:
+                embed.add_field(
+                    name=f"<:edited:550291696861315093> {target_name}",
+                    value="\n".join(changed_lines)[:1024],
+                    inline=False,
+                )
+        for target, permissions in after_overwrites.items():
+            await asyncio.sleep(0)
+            if target not in before_overwrites:
+                target_name = overwrite_target_name(after.guild, target)
+                permission_lines = [
+                    f"{emojis.on if value else emojis.off} {permission}"
+                    for permission, value in permissions
+                    if value is not None
+                ]
+                embed.add_field(
+                    name=f"<:plus:548465119462424595> {target_name}",
+                    value="\n".join(permission_lines) if permission_lines else "`has no permissions`",
+                    inline=False,
+                )
+        embed.description = f"{audit.user_mention} edited {after.mention}"
+        self.add_to_queue(
+            guild_id,
+            "channel_overwrites",
+            embed=embed,
+            actor=audit.user,
+            target=after,
+            target_label="Channel",
+            reason=audit.reason,
+            details={
+                "🔐 Before": len(before_overwrites),
+                "🔐 After": len(after_overwrites),
+                "🔗 Synced": getattr(after, "permissions_synced", None),
+            },
+            links=[("Open channel", after.jump_url, "↗️")],
+        )
 
     @commands.Cog.listener()
     async def on_guild_role_create(self, role):
@@ -6266,12 +6211,6 @@ class Logger(commands.Cog):
                 )
 
             if before.position != after.position and not self.role_moved_cd.check(after.guild.id):
-                # old_roles = self.role_index[guild_id]
-                # old_pos = old_roles.index(before)
-                # if old_roles[old_pos+1] is after.guild.roles[after.position+1]:
-                #     if old_roles[old_pos-1] is after.guild.roles[after.position-1]:
-                #         return
-                # self.role_index[guild_id] = [role for role in after.guild.roles]
                 e = Embed(color=after.color)
                 e.set_author(name="Role Moved", icon_url=audit.user_avatar)
                 e.set_thumbnail(url=audit.user_display_avatar)
@@ -6293,45 +6232,24 @@ class Logger(commands.Cog):
                     },
                 )
 
-                # before_roles = before.guild.roles
-                # before_roles.pop(after.position)
-                # before_roles.insert(before.position, before)
-                #
-                # before_above = before_roles[before.position+1].id
-                # before_below = before_roles[before.position-1].id
-                # after_above = after.guild.roles[after.position+1].id
-                # after_below = after.guild.roles[after.position-1].id
-                #
-                # if before_above == after_above and before_below == after_below:
-                #     print("Identical! EEEEEE")
-                # else:
-                #     self.queue[guild_id].append([em, 'updates', time()])
-
-                #     e.add_field(
-                #         name='Position Changed',
-                #         value=f"**》Before** - {before.position}"
-                #               f"\n{before_above}"
-                #               f"\n{before.mention}"
-                #               f"\n{before_below}"
-                #               f"\n\n**》After** - {after.position}"
-                #               f"\n{after_above}"
-                #               f"\n{after.mention}"
-                #               f"\n{after_below}",
-                #         inline=False
-                #     )
             if before.permissions != after.permissions:
                 e = make_embed("Role Permissions Updated")
-                changes = ""
-                for i, (perm, value) in enumerate(iter(after.permissions)):
-                    if value != list(before.permissions)[i][1]:
-                        changes += f"\n{emojis.on if value else emojis.off} {perm}"
+                previous_permissions = dict(before.permissions)
+                permission_changes = [
+                    (permission, value)
+                    for permission, value in after.permissions
+                    if value != previous_permissions[permission]
+                ]
+                changes = "".join(
+                    f"\n{emojis.on if value else emojis.off} {permission}"
+                    for permission, value in permission_changes
+                )
                 e.description = f"{after.mention}'s perms updated\n" \
                                 f"{emojis.reply} By {audit.user_mention}\n" \
                                 f"{changes[:3800]}"
                 changed_permissions = [
                     permission
-                    for index, (permission, value) in enumerate(after.permissions)
-                    if value != list(before.permissions)[index][1]
+                    for permission, _ in permission_changes
                 ]
                 self.add_to_queue(
                     guild_id,
@@ -6369,7 +6287,7 @@ class Logger(commands.Cog):
                     # A generic card is more useful than silently dropping it.
                     action = "Changed"
 
-            webhook: Optional[Object] = audit.target
+            webhook: Object | None = audit.target
             if webhook and action != "Deleted":
                 try:
                     webhook = await self.bot.fetch_webhook(webhook.id)
@@ -8028,7 +7946,7 @@ class Logger(commands.Cog):
             created_at=msg.created_at.timestamp(),
         )
 
-    async def on_mute(self, ctx: Context, user: Union[User, Member], duration: str, reason: str):
+    async def on_mute(self, ctx: Context, user: User | Member, duration: str, reason: str):
         e = Embed(color=blue)
         e.set_author(name="User Muted", icon_url=get_avatar(user))
         e.set_thumbnail(url=user.display_avatar.url)
@@ -8055,7 +7973,7 @@ class Logger(commands.Cog):
             created_at=ctx.message.created_at.timestamp(),
         )
 
-    async def on_unmute(self, ctx: Context, user: Union[User, Member]):
+    async def on_unmute(self, ctx: Context, user: User | Member):
         e = Embed(color=blue)
         e.set_author(name="User Unmuted", icon_url=get_avatar(user))
         e.set_thumbnail(url=user.display_avatar.url)
@@ -8076,7 +7994,7 @@ class Logger(commands.Cog):
             created_at=ctx.message.created_at.timestamp(),
         )
 
-    async def on_warn(self, ctx: Context, user: Union[User, Member], reason: str, total_warns: int):
+    async def on_warn(self, ctx: Context, user: User | Member, reason: str, total_warns: int):
         e = Embed(color=orange)
         e.set_author(name="User Warned", icon_url=get_avatar(user))
         e.set_thumbnail(url=user.display_avatar.url)

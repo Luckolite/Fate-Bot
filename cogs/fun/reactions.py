@@ -12,7 +12,6 @@ import asyncio
 import os
 import random
 from contextlib import suppress
-from typing import *
 
 import discord
 from discord.ext import commands
@@ -98,7 +97,7 @@ class Reactions(
 
         # Format the message
         if action and ctx.message.mentions:
-            argsv: List[str] = args.split()
+            argsv: list[str] = args.split()
             if len(argsv) == 1:
                 args = f"*{action} {args}*"
             elif args.startswith("<@"):

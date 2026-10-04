@@ -11,11 +11,11 @@ Contains classes for emulating menus
 import asyncio
 import random
 import secrets
+from collections.abc import Generator
 from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from time import time
-from typing import Generator, List, Optional, Union
 
 import discord
 from PIL import Image, ImageFont, ImageDraw
@@ -170,14 +170,14 @@ class CaptchaChallenge(discord.ui.LayoutView):
         user: discord.abc.User,
         code: str,
         timeout: int,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ):
         super().__init__(timeout=timeout)
         self.user = user
         self.code = code
         self.passed = False
         self.attempts = 0
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
 
         prompt = reason or f"{user.mention}, prove you're human to continue."
         expires = int(time() + timeout)
@@ -277,8 +277,8 @@ class _Select(discord.ui.Select):
 
 class GetChoice(discord.ui.View):
     """ Has the author choose between a collection of options """
-    selected: List[str] = None
-    message: Optional[discord.Message] = None
+    selected: list[str] = None
+    message: discord.Message | None = None
     message_passed = False
 
     def __init__(self, ctx, choices, limit=1, placeholder="Options", message=None, delete_after=True) -> None:
@@ -313,11 +313,11 @@ class GetChoice(discord.ui.View):
         super().__init__(timeout=45)
         self.add_item(_Select(ctx.author.id, choices, self.limit, placeholder))
 
-    def __await__(self) -> Generator[None, None, Union[str, List[str]]]:
+    def __await__(self) -> Generator[None, None, str | list[str]]:
         """ Makes the class an awaitable """
         return self._await_callback().__await__()
 
-    async def _await_callback(self) -> Union[str, List[str]]:
+    async def _await_callback(self) -> str | list[str]:
         """ Callback for when the class is awaited """
         if self.message_passed:
             await self.message.edit(view=self)
@@ -397,7 +397,7 @@ class Menus:
         timeout=45,
         delete_after=False,
         reason=None,
-        interaction: Optional[discord.Interaction] = None,
+        interaction: discord.Interaction | None = None,
     ):
         if interaction is None and context is not None:
             interaction = getattr(context, "interaction", None)
@@ -527,7 +527,7 @@ class Menus:
             with suppress(asyncio.CancelledError, HTTPException):
                 await reaction_task
 
-    async def configure(self, ctx, options: dict) -> Union[dict, None]:
+    async def configure(self, ctx, options: dict) -> dict | None:
         """ Reaction based configuration """
         if not options:
             return {}
